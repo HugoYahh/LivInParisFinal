@@ -8,19 +8,19 @@
     "net8.0": []
   },
   "packageFolders": {
-    "C:\\Users\\hugo3\\.nuget\\packages\\": {}
+    "C:\\Users\\alxdc\\.nuget\\packages\\": {}
   },
   "project": {
     "version": "1.0.0",
     "restore": {
-      "projectUniqueName": "C:\\Users\\hugo3\\OneDrive\\Documents\\LivInParis\\LivInParis\\LivInParis.csproj",
+      "projectUniqueName": "C:\\Users\\alxdc\\OneDrive\\Documents\\ecole\\esilv\\A2\\S2\\pb scientifique\\LivInParisFinal\\LivInParis\\LivInParis.csproj",
       "projectName": "LivInParis",
-      "projectPath": "C:\\Users\\hugo3\\OneDrive\\Documents\\LivInParis\\LivInParis\\LivInParis.csproj",
-      "packagesPath": "C:\\Users\\hugo3\\.nuget\\packages\\",
-      "outputPath": "C:\\Users\\hugo3\\OneDrive\\Documents\\LivInParis\\LivInParis\\obj\\",
+      "projectPath": "C:\\Users\\alxdc\\OneDrive\\Documents\\ecole\\esilv\\A2\\S2\\pb scientifique\\LivInParisFinal\\LivInParis\\LivInParis.csproj",
+      "packagesPath": "C:\\Users\\alxdc\\.nuget\\packages\\",
+      "outputPath": "C:\\Users\\alxdc\\OneDrive\\Documents\\ecole\\esilv\\A2\\S2\\pb scientifique\\LivInParisFinal\\LivInParis\\obj\\",
       "projectStyle": "PackageReference",
       "configFilePaths": [
-        "C:\\Users\\hugo3\\AppData\\Roaming\\NuGet\\NuGet.Config",
+        "C:\\Users\\alxdc\\AppData\\Roaming\\NuGet\\NuGet.Config",
         "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.Offline.config"
       ],
       "originalTargetFrameworks": [
@@ -40,11 +40,6 @@
         "warnAsError": [
           "NU1605"
         ]
-      },
-      "restoreAuditProperties": {
-        "enableAudit": "true",
-        "auditLevel": "low",
-        "auditMode": "direct"
       }
     },
     "frameworks": {
@@ -66,7 +61,7 @@
             "privateAssets": "all"
           }
         },
-        "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\8.0.404/PortableRuntimeIdentifierGraph.json"
+        "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\8.0.100/PortableRuntimeIdentifierGraph.json"
       }
     }
   }
