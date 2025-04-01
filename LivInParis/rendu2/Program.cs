@@ -8,122 +8,534 @@ namespace GraphProject
 {
     class Program
     {
-        // Simuler un catalogue de plats (pour la commande)
-        static Dictionary<string, decimal> CataloguePlats = new Dictionary<string, decimal>
-        {
-            { "Salade Niçoise", 8.50m },
-            { "Poulet Rôti", 12.00m },
-            { "Pizza Margherita", 10.00m },
-            { "Burger", 9.00m },
-            { "Pâtes Carbonara", 11.00m }
-        };
+        // Chemin vers l'Excel contenant les feuilles "Arcs" et "Noeuds"
+        static string cheminExcel = @"C:\Users\hugo3\Documents\LivInParis\MetroParis.xlsx";
+        static Graphe<string> metroGraphe;
+        static Dictionary<string, (double Latitude, double Longitude)> stationCoordinates;
+        static DatabaseManager dbManager = new DatabaseManager("localhost", "LivInParis", "root", "1234", 3306);
+
+        // Listes simulant les plats partagés et les commandes
+        static List<Plat> listePlats = new List<Plat>();
+        static List<Commande> listeCommandesClient = new List<Commande>();
+        static Dictionary<int, List<Commande>> commandeParCuisinier = new Dictionary<int, List<Commande>>();
+        static int orderCounter = 1;
+
+        // Utilisateur connecté (peut être Client et/ou Cuisinier)
+        static Utilisateur utilisateurConnecte = null;
 
         static void Main(string[] args)
         {
-            Console.WriteLine("=== Projet LivInParis : Etape 2 ===");
-
-            // Chemin complet vers l'Excel (contenant les feuilles Arcs et Noeuds)
-            string cheminExcel = @"C:\Users\hugo3\Documents\LivInParis\MetroParis.xlsx";
-
-            // Création du graphe en mode orienté (pour respecter les liaisons unidirectionnelles)
-            var metroGraphe = new Graphe<string>(oriente: true);
-
-            // Charger les arcs depuis la feuille "Arcs"
+            // Chargement du graphe et des coordonnées depuis l'Excel
+            metroGraphe = new Graphe<string>(oriente: true);
             ExcelImporter.ChargerArcs(metroGraphe, cheminExcel);
+            stationCoordinates = ExcelNoeudsImporter.ChargerNoeuds(cheminExcel);
 
-            // Charger les coordonnées des stations depuis la feuille "Noeuds"
-            var stationCoordinates = ExcelNoeudsImporter.ChargerNoeuds(cheminExcel);
-
-            // Affichage de vérification
-            Console.WriteLine("Stations chargées dans le graphe :");
-            foreach (var noeud in metroGraphe.Noeuds)
+            bool exit = false;
+            while (!exit)
             {
-                Console.WriteLine($"- {noeud.Valeur}");
-            }
-
-            // Menu principal
-            bool quit = false;
-            while (!quit)
-            {
-                Console.WriteLine("\n--- MENU PRINCIPAL ---");
-                Console.WriteLine("1. Tester la connexion à la base de données");
-                Console.WriteLine("2. Lister les clients");
-                Console.WriteLine("3. Calculer un plus court chemin (Dijkstra)");
-                Console.WriteLine("4. Calculer un plus court chemin (Bellman-Ford)");
-                Console.WriteLine("5. Calculer tous les plus courts chemins (Floyd-Warshall)");
-                Console.WriteLine("6. Visualiser le chemin graphique (Windows Forms)");
-                Console.WriteLine("7. S'inscrire (Client/Cuisinier)");
-                Console.WriteLine("8. Simulation complète (Connexion/Inscription & Prise de commande)");
-                Console.WriteLine("9. Quitter");
+                Console.WriteLine("\n=== Bienvenue sur LivInParis ===");
+                Console.WriteLine("1. Inscription");
+                Console.WriteLine("2. Connexion");
+                Console.WriteLine("3. Admin");
+                Console.WriteLine("4. Quitter");
                 Console.Write("Choix : ");
-                var choix = Console.ReadLine();
-
+                string choix = Console.ReadLine();
                 switch (choix)
                 {
                     case "1":
-                        TesterBD();
-                        break;
-                    case "2":
-                        ListerClientsBD();
-                        break;
-                    case "3":
-                        PlusCourtCheminDijkstra(metroGraphe, stationCoordinates);
-                        break;
-                    case "4":
-                        PlusCourtCheminBellman(metroGraphe, stationCoordinates);
-                        break;
-                    case "5":
-                        FloydWarshallDemo(metroGraphe, stationCoordinates);
-                        break;
-                    case "6":
-                        VisualiserCheminGraphique(metroGraphe, stationCoordinates);
-                        break;
-                    case "7":
                         Inscription();
                         break;
-                    case "8":
-                        SimulationCommandeComplete(metroGraphe, stationCoordinates);
+                    case "2":
+                        Connexion();
                         break;
-                    case "9":
-                        quit = true;
+                    case "3":
+                        AdminMenu();
+                        break;
+                    case "4":
+                        exit = true;
                         break;
                     default:
                         Console.WriteLine("Choix invalide.");
                         break;
                 }
             }
-            Console.WriteLine("Fin du programme.");
+            Console.WriteLine("Merci d'avoir utilisé LivInParis.");
         }
 
-        // --- Méthodes BD ---
-        static void TesterBD()
+        static void Inscription()
         {
-            var dbManager = new DatabaseManager("localhost", "livinparis", "root", "1234", 3306);
-            dbManager.TestConnexion();
+            Console.WriteLine("\n=== Inscription ===");
+            Console.Write("Êtes-vous Client, Cuisinier ou les 2 ? (C/U/B pour Both) : ");
+            string choixRole = Console.ReadLine().Trim().ToUpper();
+
+            Console.Write("Nom : ");
+            string nom = Console.ReadLine().Trim();
+            Console.Write("Prénom : ");
+            string prenom = Console.ReadLine().Trim();
+            Console.Write("Adresse email : ");
+            string email = Console.ReadLine().Trim();
+            Console.Write("Mot de passe : ");
+            string motDePasse = Console.ReadLine().Trim();
+            Console.Write("Rue : ");
+            string rue = Console.ReadLine().Trim();
+            Console.Write("Numéro de rue : ");
+            string numRue = Console.ReadLine().Trim();
+            Console.Write("Code postal : ");
+            int codePostal;
+            while (!int.TryParse(Console.ReadLine(), out codePostal))
+            {
+                Console.Write("Veuillez entrer un code postal valide : ");
+            }
+            Console.Write("Ville : ");
+            string ville = Console.ReadLine().Trim();
+            Console.Write("Téléphone : ");
+            string tel = Console.ReadLine().Trim();
+            Console.Write("Station de métro (votre station) : ");
+            string metro = Console.ReadLine().Trim();
+
+            // Selon le choix, on peut inscrire l'utilisateur en tant que client, cuisinier ou les deux.
+            int idClient = -1, idCuisinier = -1;
+            if (choixRole == "C" || choixRole == "B")
+            {
+                idClient = dbManager.InsererClient(nom, prenom, rue, numRue, codePostal, ville, tel, email, metro, motDePasse);
+            }
+            if (choixRole == "U" || choixRole == "B")
+            {
+                // On demande le sous-type de cuisinier
+                Console.Write("Êtes-vous un cuisinier Particulier ou une Entreprise locale ? (P/E) : ");
+                string sousType = Console.ReadLine().Trim().ToUpper();
+                if (sousType == "P")
+                {
+                    Console.Write("Informations complémentaires (optionnel) : ");
+                    string infosComplementaires = Console.ReadLine().Trim();
+                    idCuisinier = dbManager.InsererCuisinierParticulier(nom, prenom, rue, numRue, codePostal, ville, tel, email, metro, motDePasse, infosComplementaires);
+                }
+                else if (sousType == "E")
+                {
+                    Console.Write("Nom de l'entreprise : ");
+                    string nomEntreprise = Console.ReadLine().Trim();
+                    Console.Write("Nom du référent communication (optionnel) : ");
+                    string referent = Console.ReadLine().Trim();
+                    idCuisinier = dbManager.InsererCuisinierEntreprise(nom, prenom, rue, numRue, codePostal, ville, tel, email, metro, motDePasse, nomEntreprise, referent);
+                }
+                else
+                {
+                    Console.WriteLine("Sous-type de cuisinier non reconnu.");
+                }
+            }
+            // On affiche les IDs obtenus (s'ils ont été créés)
+            if (idClient != -1)
+                Console.WriteLine($"Inscription Client réussie ! Votre ID Client est : {idClient}");
+            if (idCuisinier != -1)
+                Console.WriteLine($"Inscription Cuisinier réussie ! Votre ID Cuisinier est : {idCuisinier}");
+
+            // Pour la connexion ultérieure, l'utilisateur pourra choisir son rôle.
         }
 
-        static void ListerClientsBD()
+        static void Connexion()
         {
-            var dbManager = new DatabaseManager("localhost", "livinparis", "root", "1234", 3306);
-            dbManager.ListerClients();
+            Console.WriteLine("\n=== Connexion ===");
+            Console.Write("Adresse email : ");
+            string email = Console.ReadLine().Trim();
+            Console.Write("Mot de passe : ");
+            string motDePasse = Console.ReadLine().Trim();
+            Console.Write("Se connecter en tant que Client ou Cuisinier ? (C/U) : ");
+            string role = Console.ReadLine().Trim().ToUpper();
+
+            if (role == "C")
+            {
+                Utilisateur user = dbManager.ObtenirClientByEmail(email, motDePasse);
+                if (user != null)
+                {
+                    Console.WriteLine("Connexion Client réussie !");
+                    utilisateurConnecte = user;
+                    MenuClient();
+                }
+                else
+                {
+                    Console.WriteLine("Échec de la connexion pour le Client.");
+                }
+            }
+            else if (role == "U")
+            {
+                Utilisateur user = dbManager.ObtenirCuisinierByEmail(email, motDePasse);
+                if (user != null)
+                {
+                    Console.WriteLine("Connexion Cuisinier réussie !");
+                    utilisateurConnecte = user;
+                    MenuCuisinier();
+                }
+                else
+                {
+                    Console.WriteLine("Échec de la connexion pour le Cuisinier.");
+                }
+            }
+            else
+            {
+                Console.WriteLine("Rôle non reconnu.");
+            }
         }
 
-        // --- Méthodes de calcul de plus court chemin ---
-        static void PlusCourtCheminDijkstra(Graphe<string> graphe, Dictionary<string, (double Latitude, double Longitude)> coords)
+        static void MenuClient()
+        {
+            bool logout = false;
+            while (!logout)
+            {
+                Console.WriteLine("\n=== Interface Client ===");
+                Console.WriteLine("1. Voir les plats disponibles");
+                Console.WriteLine("2. Commander un plat");
+                Console.WriteLine("3. Voir mes commandes");
+                Console.WriteLine("4. Se déconnecter");
+                Console.Write("Choix : ");
+                string choix = Console.ReadLine();
+                switch (choix)
+                {
+                    case "1":
+                        AfficherPlatsDisponibles();
+                        break;
+                    case "2":
+                        CommanderPlat();
+                        break;
+                    case "3":
+                        VoirMesCommandesClient();
+                        break;
+                    case "4":
+                        logout = true;
+                        utilisateurConnecte = null;
+                        break;
+                    default:
+                        Console.WriteLine("Choix invalide.");
+                        break;
+                }
+            }
+        }
+
+        static void MenuCuisinier()
+        {
+            bool logout = false;
+            while (!logout)
+            {
+                Console.WriteLine("\n=== Interface Cuisinier ===");
+                Console.WriteLine("1. Partager un plat");
+                Console.WriteLine("2. Voir mes plats partagés");
+                Console.WriteLine("3. Voir les commandes reçues");
+                Console.WriteLine("4. Se déconnecter");
+                Console.Write("Choix : ");
+                string choix = Console.ReadLine();
+                switch (choix)
+                {
+                    case "1":
+                        PartagerPlat();
+                        break;
+                    case "2":
+                        VoirMesPlatsPartages();
+                        break;
+                    case "3":
+                        VoirCommandesCuisinier();
+                        break;
+                    case "4":
+                        logout = true;
+                        utilisateurConnecte = null;
+                        break;
+                    default:
+                        Console.WriteLine("Choix invalide.");
+                        break;
+                }
+            }
+        }
+
+        static void AdminMenu()
+        {
+            Console.WriteLine("\n=== Interface Admin ===");
+            bool exitAdmin = false;
+            while (!exitAdmin)
+            {
+                Console.WriteLine("1. Calculer plus court chemin (Dijkstra)");
+                Console.WriteLine("2. Calculer plus court chemin (Bellman-Ford)");
+                Console.WriteLine("3. Calculer tous les plus courts chemins (Floyd-Warshall)");
+                Console.WriteLine("4. Visualiser le chemin graphique (Windows Forms)");
+                Console.WriteLine("5. Retour au menu principal");
+                Console.Write("Choix : ");
+                string choix = Console.ReadLine();
+                switch (choix)
+                {
+                    case "1":
+                        CalculerDijkstra();
+                        break;
+                    case "2":
+                        CalculerBellmanFord();
+                        break;
+                    case "3":
+                        CalculerFloydWarshall();
+                        break;
+                    case "4":
+                        VisualiserCheminGraphiqueAdmin();
+                        break;
+                    case "5":
+                        exitAdmin = true;
+                        break;
+                    default:
+                        Console.WriteLine("Choix invalide.");
+                        break;
+                }
+            }
+        }
+
+        static void AfficherPlatsDisponibles()
+        {
+            Console.WriteLine("\n=== Liste des plats disponibles ===");
+            if (listePlats.Count == 0)
+            {
+                Console.WriteLine("Aucun plat n'a encore été partagé.");
+            }
+            else
+            {
+                foreach (var plat in listePlats)
+                {
+                    Console.WriteLine($"ID: {plat.ID} - {plat.Nom} ({plat.Type}) - Prix: {plat.PrixParPersonne:C}");
+                }
+            }
+        }
+
+        // Lorsqu'un client commande, la station du cuisinier est prise depuis le plat (définie lors du partage)
+        static void CommanderPlat()
+        {
+            AfficherPlatsDisponibles();
+            if (listePlats.Count == 0)
+                return;
+            Console.Write("Entrez l'ID du plat à commander : ");
+            int idPlat;
+            if (!int.TryParse(Console.ReadLine(), out idPlat))
+            {
+                Console.WriteLine("ID invalide.");
+                return;
+            }
+            var plat = listePlats.Find(p => p.ID == idPlat);
+            if (plat == null)
+            {
+                Console.WriteLine("Plat non trouvé.");
+                return;
+            }
+            Console.Write("Quantité : ");
+            int quantite;
+            while (!int.TryParse(Console.ReadLine(), out quantite))
+            {
+                Console.Write("Veuillez entrer une quantité valide : ");
+            }
+            decimal montantTotal = plat.PrixParPersonne * quantite;
+            Console.WriteLine($"Montant total de la commande : {montantTotal:C}");
+
+            // Le client indique uniquement sa station de métro
+            Console.Write("Entrez votre station de métro : ");
+            string stationClient = Console.ReadLine().Trim();
+            // La station du cuisinier est récupérée depuis le plat partagé
+            string stationCuisinier = plat.StationCuisinier;
+            if (string.IsNullOrEmpty(stationCuisinier))
+            {
+                Console.WriteLine("La station de métro du cuisinier n'est pas renseignée pour ce plat.");
+                return;
+            }
+            var noeudClient = metroGraphe.TrouverNoeud(stationClient);
+            var noeudCuisinier = metroGraphe.TrouverNoeud(stationCuisinier);
+            if (noeudClient == null || noeudCuisinier == null)
+            {
+                Console.WriteLine("Erreur : station(s) introuvable(s) dans le graphe.");
+                return;
+            }
+            var (distances, predecesseurs) = metroGraphe.Dijkstra(noeudCuisinier);
+            double tempsTrajet = distances[noeudClient];
+            if (double.IsInfinity(tempsTrajet))
+            {
+                Console.WriteLine("Aucun chemin trouvé entre les stations indiquées.");
+                return;
+            }
+            else
+            {
+                var chemin = ReconstruireChemin(noeudCuisinier, noeudClient, predecesseurs);
+                double distanceParcourue = CalculerDistanceChemin(chemin, stationCoordinates);
+                Console.WriteLine("=== Détails de la commande ===");
+                Console.WriteLine($"Temps de trajet : {tempsTrajet}");
+                Console.WriteLine("Chemin parcouru : " + string.Join(" -> ", chemin));
+                Console.WriteLine($"Distance totale parcourue : {distanceParcourue:F2} km");
+
+                // Enregistrement de la commande
+                Commande commande = new Commande
+                {
+                    ID = orderCounter++,
+                    Plat = plat.Nom,
+                    Quantite = quantite,
+                    DateLivraison = DateTime.Now,
+                    AdresseLivraison = stationClient,
+                    TempsTrajet = tempsTrajet,
+                    Chemin = chemin,
+                    Distance = distanceParcourue
+                };
+                listeCommandesClient.Add(commande);
+                if (!commandeParCuisinier.ContainsKey(plat.IDCuisinier))
+                    commandeParCuisinier[plat.IDCuisinier] = new List<Commande>();
+                commandeParCuisinier[plat.IDCuisinier].Add(commande);
+
+                Console.WriteLine("Commande enregistrée.");
+                Console.WriteLine("Appuyez sur une touche pour visualiser le trajet.");
+                Console.ReadKey();
+                Application.EnableVisualStyles();
+                Application.SetCompatibleTextRenderingDefault(false);
+                Application.Run(new GraphForm(chemin, stationCoordinates));
+            }
+        }
+
+        static void PartagerPlat()
+        {
+            Console.WriteLine("\n=== Partager un nouveau plat ===");
+            Console.Write("Nom du plat : ");
+            string nomPlat = Console.ReadLine().Trim();
+            Console.Write("Type de plat (Entrée / Plat principal / Dessert) : ");
+            string typePlat = Console.ReadLine().Trim();
+            Console.Write("Pour combien de personnes ? ");
+            int nbPortions;
+            while (!int.TryParse(Console.ReadLine(), out nbPortions))
+            {
+                Console.Write("Veuillez entrer un nombre valide : ");
+            }
+            Console.Write("Date de fabrication (jj/mm/aaaa) : ");
+            DateTime dateFabrication;
+            if (!DateTime.TryParseExact(Console.ReadLine().Trim(), "dd/MM/yyyy", CultureInfo.InvariantCulture, DateTimeStyles.None, out dateFabrication))
+            {
+                Console.WriteLine("Date invalide.");
+                return;
+            }
+            Console.Write("Date de péremption (jj/mm/aaaa) : ");
+            DateTime datePeremption;
+            if (!DateTime.TryParseExact(Console.ReadLine().Trim(), "dd/MM/yyyy", CultureInfo.InvariantCulture, DateTimeStyles.None, out datePeremption))
+            {
+                Console.WriteLine("Date invalide.");
+                return;
+            }
+            Console.Write("Prix par personne : ");
+            decimal prix;
+            while (!decimal.TryParse(Console.ReadLine(), out prix))
+            {
+                Console.Write("Veuillez entrer un prix valide : ");
+            }
+            Console.Write("Nationalité de la cuisine (ex. : chinoise, mexicaine) : ");
+            string nationalite = Console.ReadLine().Trim();
+            Console.Write("Régime alimentaire (végétarien, sans gluten, halal, etc.) : ");
+            string regime = Console.ReadLine().Trim();
+            Console.Write("Ingrédients principaux : ");
+            string ingredients = Console.ReadLine().Trim();
+
+            // La station du cuisinier est celle renseignée lors de son inscription
+            int idCuisinier = utilisateurConnecte.ID;
+            // Enregistrement en base de données
+            dbManager.InsererPlat(nomPlat, typePlat, nbPortions, dateFabrication, datePeremption, prix, nationalite, regime, ingredients, idCuisinier);
+
+            int newID = (listePlats.Count > 0) ? listePlats[listePlats.Count - 1].ID + 1 : 1;
+            // On stocke également la station de métro du cuisinier dans le plat partagé
+            listePlats.Add(new Plat
+            {
+                ID = newID,
+                Nom = nomPlat,
+                Type = typePlat,
+                NbPortions = nbPortions,
+                DateFabrication = dateFabrication,
+                DatePeremption = datePeremption,
+                PrixParPersonne = prix,
+                NationaliteCuisine = nationalite,
+                RegimeAlimentaire = regime,
+                Ingredients = ingredients,
+                IDCuisinier = idCuisinier,
+                StationCuisinier = utilisateurConnecte.MetroProche
+            });
+            Console.WriteLine("Plat partagé avec succès !");
+        }
+
+        static void VoirMesPlatsPartages()
+        {
+            Console.WriteLine("\n=== Mes plats partagés ===");
+            int idCuisinier = utilisateurConnecte.ID;
+            var mesPlats = listePlats.FindAll(p => p.IDCuisinier == idCuisinier);
+            if (mesPlats.Count == 0)
+            {
+                Console.WriteLine("Aucun plat partagé.");
+            }
+            else
+            {
+                foreach (var plat in mesPlats)
+                {
+                    Console.WriteLine($"ID: {plat.ID} - {plat.Nom} ({plat.Type}) - Prix: {plat.PrixParPersonne:C}");
+                }
+            }
+        }
+
+        static void VoirMesCommandesClient()
+        {
+            Console.WriteLine("\n=== Mes commandes ===");
+            if (listeCommandesClient.Count == 0)
+            {
+                Console.WriteLine("Aucune commande enregistrée.");
+            }
+            else
+            {
+                foreach (var commande in listeCommandesClient)
+                {
+                    Console.WriteLine($"Commande #{commande.ID}: Plat: {commande.Plat}, Quantité: {commande.Quantite}, Temps trajet: {commande.TempsTrajet}, Distance: {commande.Distance:F2} km");
+                }
+            }
+        }
+
+        static void VoirCommandesCuisinier()
+        {
+            Console.WriteLine("\n=== Commandes reçues ===");
+            int idCuisinier = utilisateurConnecte.ID;
+            if (!commandeParCuisinier.ContainsKey(idCuisinier) || commandeParCuisinier[idCuisinier].Count == 0)
+            {
+                Console.WriteLine("Aucune commande reçue.");
+            }
+            else
+            {
+                foreach (var commande in commandeParCuisinier[idCuisinier])
+                {
+                    Console.WriteLine($"Commande #{commande.ID}: Plat: {commande.Plat}, Quantité: {commande.Quantite}, Temps trajet: {commande.TempsTrajet}, Distance: {commande.Distance:F2} km");
+                }
+                Console.WriteLine("Souhaitez-vous visualiser le trajet d'une commande ? (O/N)");
+                string rep = Console.ReadLine().Trim().ToUpper();
+                if (rep == "O")
+                {
+                    Console.Write("Entrez l'ID de la commande : ");
+                    int idCommande;
+                    if (int.TryParse(Console.ReadLine(), out idCommande))
+                    {
+                        var commande = commandeParCuisinier[idCuisinier].Find(c => c.ID == idCommande);
+                        if (commande != null)
+                        {
+                            Application.EnableVisualStyles();
+                            Application.SetCompatibleTextRenderingDefault(false);
+                            Application.Run(new GraphForm(commande.Chemin, stationCoordinates));
+                        }
+                        else
+                        {
+                            Console.WriteLine("Commande non trouvée.");
+                        }
+                    }
+                }
+            }
+        }
+
+        // Fonctions Admin (démonstration des algorithmes de plus court chemin)
+        static void CalculerDijkstra()
         {
             Console.Write("Station de départ : ");
             string depart = Console.ReadLine();
             Console.Write("Station d'arrivée : ");
             string arrivee = Console.ReadLine();
-
-            var noeudDepart = graphe.TrouverNoeud(depart);
-            var noeudArrivee = graphe.TrouverNoeud(arrivee);
+            var noeudDepart = metroGraphe.TrouverNoeud(depart);
+            var noeudArrivee = metroGraphe.TrouverNoeud(arrivee);
             if (noeudDepart == null || noeudArrivee == null)
             {
                 Console.WriteLine("Station(s) inconnue(s).");
                 return;
             }
-            var (distances, predecesseurs) = graphe.Dijkstra(noeudDepart);
+            var (distances, predecesseurs) = metroGraphe.Dijkstra(noeudDepart);
             double tempsTrajet = distances[noeudArrivee];
             if (double.IsInfinity(tempsTrajet))
             {
@@ -132,28 +544,25 @@ namespace GraphProject
             else
             {
                 var chemin = ReconstruireChemin(noeudDepart, noeudArrivee, predecesseurs);
-                double distanceParcourue = CalculerDistanceChemin(chemin, coords);
-                Console.WriteLine($"Temps de trajet : {tempsTrajet}");
+                Console.WriteLine($"Temps de trajet (Dijkstra) : {tempsTrajet}");
                 Console.WriteLine("Chemin : " + string.Join(" -> ", chemin));
-                Console.WriteLine($"Distance parcourue : {distanceParcourue:F2} km");
             }
         }
 
-        static void PlusCourtCheminBellman(Graphe<string> graphe, Dictionary<string, (double Latitude, double Longitude)> coords)
+        static void CalculerBellmanFord()
         {
             Console.Write("Station de départ : ");
             string depart = Console.ReadLine();
             Console.Write("Station d'arrivée : ");
             string arrivee = Console.ReadLine();
-
-            var noeudDepart = graphe.TrouverNoeud(depart);
-            var noeudArrivee = graphe.TrouverNoeud(arrivee);
+            var noeudDepart = metroGraphe.TrouverNoeud(depart);
+            var noeudArrivee = metroGraphe.TrouverNoeud(arrivee);
             if (noeudDepart == null || noeudArrivee == null)
             {
                 Console.WriteLine("Station(s) inconnue(s).");
                 return;
             }
-            var (distances, predecesseurs) = graphe.BellmanFord(noeudDepart);
+            var (distances, predecesseurs) = metroGraphe.BellmanFord(noeudDepart);
             double tempsTrajet = distances[noeudArrivee];
             if (double.IsInfinity(tempsTrajet))
             {
@@ -162,20 +571,18 @@ namespace GraphProject
             else
             {
                 var chemin = ReconstruireChemin(noeudDepart, noeudArrivee, predecesseurs);
-                double distanceParcourue = CalculerDistanceChemin(chemin, coords);
-                Console.WriteLine($"Temps de trajet : {tempsTrajet}");
+                Console.WriteLine($"Temps de trajet (Bellman-Ford) : {tempsTrajet}");
                 Console.WriteLine("Chemin : " + string.Join(" -> ", chemin));
-                Console.WriteLine($"Distance parcourue : {distanceParcourue:F2} km");
             }
         }
 
-        static void FloydWarshallDemo(Graphe<string> graphe, Dictionary<string, (double Latitude, double Longitude)> coords)
+        static void CalculerFloydWarshall()
         {
-            var (dist, next) = graphe.FloydWarshall();
+            var (dist, next) = metroGraphe.FloydWarshall();
             Console.WriteLine("=== Matrice des temps de trajet ===");
-            foreach (var i in graphe.Noeuds)
+            foreach (var i in metroGraphe.Noeuds)
             {
-                foreach (var j in graphe.Noeuds)
+                foreach (var j in metroGraphe.Noeuds)
                 {
                     double d = dist[(i, j)];
                     if (double.IsInfinity(d))
@@ -188,317 +595,52 @@ namespace GraphProject
             string dep = Console.ReadLine();
             Console.Write("Station d'arrivée pour reconstruction : ");
             string arr = Console.ReadLine();
-            var noeudDep = graphe.TrouverNoeud(dep);
-            var noeudArr = graphe.TrouverNoeud(arr);
+            var noeudDep = metroGraphe.TrouverNoeud(dep);
+            var noeudArr = metroGraphe.TrouverNoeud(arr);
             if (noeudDep == null || noeudArr == null)
             {
                 Console.WriteLine("Station(s) inconnue(s).");
                 return;
             }
-            var cheminReconstitue = graphe.ReconstituerCheminFloyd(noeudDep, noeudArr, next);
+            var cheminReconstitue = metroGraphe.ReconstituerCheminFloyd(noeudDep, noeudArr, next);
             if (cheminReconstitue.Count == 0)
                 Console.WriteLine("Aucun chemin trouvé.");
             else
             {
-                double distanceParcourue = CalculerDistanceChemin(cheminReconstitue.ConvertAll(n => n.Valeur), coords);
-                Console.WriteLine("Chemin (Floyd-Warshall) : " +
-                    string.Join(" -> ", cheminReconstitue.ConvertAll(n => n.Valeur)));
-                Console.WriteLine($"Distance parcourue : {distanceParcourue:F2} km");
+                Console.WriteLine("Chemin (Floyd-Warshall) : " + string.Join(" -> ", cheminReconstitue.ConvertAll(n => n.Valeur)));
             }
         }
 
-        // --- Option graphique ---
-        static void VisualiserCheminGraphique(Graphe<string> graphe, Dictionary<string, (double Latitude, double Longitude)> coords)
+        static void VisualiserCheminGraphiqueAdmin()
         {
             Console.Write("Station de départ : ");
             string depart = Console.ReadLine();
             Console.Write("Station d'arrivée : ");
             string arrivee = Console.ReadLine();
-            var noeudDepart = graphe.TrouverNoeud(depart);
-            var noeudArrivee = graphe.TrouverNoeud(arrivee);
+            var noeudDepart = metroGraphe.TrouverNoeud(depart);
+            var noeudArrivee = metroGraphe.TrouverNoeud(arrivee);
             if (noeudDepart == null || noeudArrivee == null)
             {
                 Console.WriteLine("Station(s) inconnue(s).");
                 return;
             }
-            var (distances, predecesseurs) = graphe.Dijkstra(noeudDepart);
+            var (distances, predecesseurs) = metroGraphe.Dijkstra(noeudDepart);
             double tempsTrajet = distances[noeudArrivee];
             if (double.IsInfinity(tempsTrajet))
             {
                 Console.WriteLine("Aucun chemin trouvé.");
-                return;
             }
             else
             {
                 var chemin = ReconstruireChemin(noeudDepart, noeudArrivee, predecesseurs);
-                double distanceParcourue = CalculerDistanceChemin(chemin, coords);
                 Console.WriteLine($"Temps de trajet : {tempsTrajet}");
                 Console.WriteLine("Chemin : " + string.Join(" -> ", chemin));
-                Console.WriteLine($"Distance parcourue : {distanceParcourue:F2} km");
                 Application.EnableVisualStyles();
                 Application.SetCompatibleTextRenderingDefault(false);
-                Application.Run(new GraphForm(chemin, coords));
+                Application.Run(new GraphForm(chemin, stationCoordinates));
             }
         }
 
-        // --- Gestion de la connexion / inscription ---
-        static bool ConnexionUtilisateur(string email, string motDePasse, string type)
-        {
-            // Dans une implémentation réelle, on exécuterait une requête SELECT sur Client ou Cuisinier.
-            if (string.IsNullOrEmpty(email) || string.IsNullOrEmpty(motDePasse) || !email.Contains("@"))
-                return false;
-            // Simulation simple : si l'email contient "test", connexion réussie.
-            return email.ToLower().Contains("test");
-        }
-
-        static void Inscription()
-        {
-            Console.WriteLine("Inscription");
-            Console.Write("Êtes-vous Client ou Cuisinier ? (C/U) : ");
-            string type = Console.ReadLine().Trim().ToUpper();
-            Console.Write("Nom : ");
-            string nom = Console.ReadLine();
-            Console.Write("Prénom : ");
-            string prenom = Console.ReadLine();
-            Console.Write("Adresse email : ");
-            string email = Console.ReadLine().Trim();
-            Console.Write("Mot de passe : ");
-            string motDePasse = Console.ReadLine().Trim();
-            Console.Write("Rue : ");
-            string rue = Console.ReadLine();
-            Console.Write("Numéro de rue : ");
-            string numRue = Console.ReadLine();
-            Console.Write("Code postal : ");
-            int codePostal;
-            while (!int.TryParse(Console.ReadLine(), out codePostal))
-            {
-                Console.Write("Veuillez entrer un code postal valide : ");
-            }
-            Console.Write("Ville : ");
-            string ville = Console.ReadLine();
-            Console.Write("Téléphone : ");
-            string tel = Console.ReadLine();
-            Console.Write("Station de métro la plus proche : ");
-            string metro = Console.ReadLine();
-            var dbManager = new DatabaseManager("localhost", "livinparis", "root", "1234", 3306);
-            if (type == "C")
-                dbManager.InsererClient(nom, prenom, rue, numRue, codePostal, ville, tel, email, metro);
-            else if (type == "U")
-                dbManager.InsererCuisinier(nom, prenom, rue, numRue, codePostal, ville, tel, email, metro);
-            else
-                Console.WriteLine("Type d'utilisateur non reconnu.");
-        }
-
-        // --- Simulation complète de commande avec authentification réelle ---
-        static void SimulationCommandeComplete(Graphe<string> graphe, Dictionary<string, (double Latitude, double Longitude)> coords)
-        {
-            Console.WriteLine("=== Simulation de Commande Complète ===");
-            Console.Write("Avez-vous déjà un compte ? (O/N) : ");
-            string reponse = Console.ReadLine().Trim().ToUpper();
-
-            string email = "";
-            string motDePasse = "";
-            string typeUtilisateur = ""; // "C" pour Client, "U" pour Cuisinier
-
-            if (reponse == "O")
-            {
-                Console.Write("Vous connectez-vous en tant que Client ou Cuisinier ? (C/U) : ");
-                typeUtilisateur = Console.ReadLine().Trim().ToUpper();
-                Console.Write("Adresse email : ");
-                email = Console.ReadLine().Trim();
-                Console.Write("Mot de passe : ");
-                motDePasse = Console.ReadLine().Trim();
-                if (!ConnexionUtilisateur(email, motDePasse, typeUtilisateur))
-                {
-                    Console.WriteLine("Échec de la connexion. Fin de la simulation.");
-                    return;
-                }
-                Console.WriteLine("Connexion réussie !");
-            }
-            else
-            {
-                Console.WriteLine("Création d'un nouveau compte.");
-                Console.Write("Êtes-vous Client ou Cuisinier ? (C/U) : ");
-                typeUtilisateur = Console.ReadLine().Trim().ToUpper();
-                Console.Write("Nom : ");
-                string nom = Console.ReadLine();
-                Console.Write("Prénom : ");
-                string prenom = Console.ReadLine();
-                Console.Write("Adresse email : ");
-                email = Console.ReadLine().Trim();
-                Console.Write("Mot de passe : ");
-                motDePasse = Console.ReadLine().Trim();
-                Console.Write("Rue : ");
-                string rue = Console.ReadLine();
-                Console.Write("Numéro de rue : ");
-                string numRue = Console.ReadLine();
-                Console.Write("Code postal : ");
-                int codePostal;
-                while (!int.TryParse(Console.ReadLine(), out codePostal))
-                    Console.Write("Veuillez entrer un code postal valide : ");
-                Console.Write("Ville : ");
-                string ville = Console.ReadLine();
-                Console.Write("Téléphone : ");
-                string tel = Console.ReadLine();
-                Console.Write("Station de métro la plus proche : ");
-                string metro = Console.ReadLine();
-                var dbManager = new DatabaseManager("localhost", "livinparis", "root", "1234", 3306);
-                if (typeUtilisateur == "C")
-                    dbManager.InsererClient(nom, prenom, rue, numRue, codePostal, ville, tel, email, metro);
-                else if (typeUtilisateur == "U")
-                    dbManager.InsererCuisinier(nom, prenom, rue, numRue, codePostal, ville, tel, email, metro);
-                else
-                {
-                    Console.WriteLine("Type d'utilisateur non reconnu.");
-                    return;
-                }
-                Console.WriteLine("Inscription réussie !");
-            }
-
-            // Simulation de la prise de commande réelle
-            if (typeUtilisateur == "C")
-            {
-                Console.WriteLine("=== Interface Client ===");
-                Console.Write("Voulez-vous passer une commande ? (O/N) : ");
-                string passerCommande = Console.ReadLine().Trim().ToUpper();
-                if (passerCommande != "O")
-                {
-                    Console.WriteLine("Simulation terminée.");
-                    return;
-                }
-                // Saisie du nombre de lignes de commande
-                Console.Write("Combien de plats voulez-vous commander ? ");
-                int nbLignes;
-                while (!int.TryParse(Console.ReadLine(), out nbLignes))
-                    Console.Write("Veuillez entrer un nombre valide : ");
-
-                decimal montantTotal = 0;
-                List<OrderLine> commande = new List<OrderLine>();
-                for (int i = 0; i < nbLignes; i++)
-                {
-                    Console.WriteLine($"--- Ligne de commande #{i + 1} ---");
-                    Console.Write("Nom du plat (choisissez parmi : ");
-                    foreach (var plat in CataloguePlats.Keys)
-                        Console.Write(plat + ", ");
-                    Console.Write(") : ");
-                    string nomPlat = Console.ReadLine().Trim();
-                    if (!CataloguePlats.ContainsKey(nomPlat))
-                    {
-                        Console.WriteLine("Plat non reconnu, commande annulée.");
-                        return;
-                    }
-                    Console.Write("Quantité : ");
-                    int quantite;
-                    while (!int.TryParse(Console.ReadLine(), out quantite))
-                        Console.Write("Veuillez entrer une quantité valide : ");
-                    Console.Write("Date de livraison (jj/mm/aaaa) : ");
-                    string dateLivraisonStr = Console.ReadLine().Trim();
-                    DateTime dateLivraison;
-                    if (!DateTime.TryParseExact(dateLivraisonStr, "dd/MM/yyyy", CultureInfo.InvariantCulture, DateTimeStyles.None, out dateLivraison))
-                    {
-                        Console.WriteLine("Date invalide, commande annulée.");
-                        return;
-                    }
-                    Console.Write("Adresse de livraison : ");
-                    string adresseLivraison = Console.ReadLine().Trim();
-
-                    decimal prix = CataloguePlats[nomPlat];
-                    montantTotal += prix * quantite;
-
-                    commande.Add(new OrderLine
-                    {
-                        Plat = nomPlat,
-                        Quantite = quantite,
-                        DateLivraison = dateLivraison,
-                        AdresseLivraison = adresseLivraison,
-                        PrixUnitaire = prix
-                    });
-                }
-
-                Console.WriteLine($"Montant total de la commande : {montantTotal:C}");
-                // Simuler l'insertion de la commande dans la base de données
-                Console.WriteLine("Commande enregistrée dans la base.");
-
-                // Simulation de calcul du chemin pour la livraison :
-                // On demande la station de métro du client et celle du cuisinier qui prendra en charge la livraison.
-                Console.Write("Entrez votre station de métro (client) : ");
-                string stationClient = Console.ReadLine().Trim();
-                Console.Write("Entrez la station de métro du cuisinier pour la livraison : ");
-                string stationCuisinier = Console.ReadLine().Trim();
-
-                var noeudClient = graphe.TrouverNoeud(stationClient);
-                var noeudCuisinier = graphe.TrouverNoeud(stationCuisinier);
-                if (noeudClient == null || noeudCuisinier == null)
-                {
-                    Console.WriteLine("Erreur : l'une des stations saisies est introuvable dans le graphe.");
-                    return;
-                }
-
-                var (distances, predecesseurs) = graphe.Dijkstra(noeudCuisinier);
-                double tempsTrajet = distances[noeudClient];
-                if (double.IsInfinity(tempsTrajet))
-                {
-                    Console.WriteLine("Aucun chemin trouvé entre les stations indiquées.");
-                }
-                else
-                {
-                    var chemin = ReconstruireChemin(noeudCuisinier, noeudClient, predecesseurs);
-                    double distanceParcourue = CalculerDistanceChemin(chemin, coords);
-                    Console.WriteLine("=== Résultat de la commande ===");
-                    Console.WriteLine($"Temps de trajet : {tempsTrajet}");
-                    Console.WriteLine("Chemin parcouru : " + string.Join(" -> ", chemin));
-                    Console.WriteLine($"Distance totale parcourue : {distanceParcourue:F2} km");
-                    Console.WriteLine("Appuyez sur une touche pour visualiser le chemin graphique.");
-                    Console.ReadKey();
-                    Application.EnableVisualStyles();
-                    Application.SetCompatibleTextRenderingDefault(false);
-                    Application.Run(new GraphForm(chemin, coords));
-                }
-            }
-            else if (typeUtilisateur == "U")
-            {
-                Console.WriteLine("=== Interface Cuisinier ===");
-                Console.Write("Entrez votre station de métro : ");
-                string stationCuisinier = Console.ReadLine().Trim();
-                Console.Write("Entrez la station de métro du client pour la livraison : ");
-                string stationClient = Console.ReadLine().Trim();
-
-                var noeudCuisinier = graphe.TrouverNoeud(stationCuisinier);
-                var noeudClient = graphe.TrouverNoeud(stationClient);
-                if (noeudCuisinier == null || noeudClient == null)
-                {
-                    Console.WriteLine("Erreur : l'une des stations saisies est introuvable dans le graphe.");
-                    return;
-                }
-
-                var (distances, predecesseurs) = graphe.Dijkstra(noeudCuisinier);
-                double tempsTrajet = distances[noeudClient];
-                if (double.IsInfinity(tempsTrajet))
-                {
-                    Console.WriteLine("Aucun chemin trouvé entre les stations indiquées.");
-                }
-                else
-                {
-                    var chemin = ReconstruireChemin(noeudCuisinier, noeudClient, predecesseurs);
-                    double distanceParcourue = CalculerDistanceChemin(chemin, coords);
-                    Console.WriteLine("=== Résultat de la livraison ===");
-                    Console.WriteLine($"Temps de trajet : {tempsTrajet}");
-                    Console.WriteLine("Chemin parcouru : " + string.Join(" -> ", chemin));
-                    Console.WriteLine($"Distance totale parcourue : {distanceParcourue:F2} km");
-                    Console.WriteLine("Appuyez sur une touche pour visualiser le chemin graphique.");
-                    Console.ReadKey();
-                    Application.EnableVisualStyles();
-                    Application.SetCompatibleTextRenderingDefault(false);
-                    Application.Run(new GraphForm(chemin, coords));
-                }
-            }
-            else
-            {
-                Console.WriteLine("Type d'utilisateur non reconnu pour la simulation.");
-            }
-        }
-
-        // --- Méthodes utilitaires pour le graphe ---
         static List<string> ReconstruireChemin(Noeud<string> depart, Noeud<string> arrivee, Dictionary<Noeud<string>, Noeud<string>> predecesseurs)
         {
             List<string> chemin = new List<string>();
@@ -545,13 +687,46 @@ namespace GraphProject
         }
     }
 
-    // Classe pour simuler une ligne de commande
-    public class OrderLine
+    // Classe représentant un plat partagé (ajout de la propriété StationCuisinier)
+    public class Plat
     {
+        public int ID { get; set; }
+        public string Nom { get; set; }
+        public string Type { get; set; }
+        public int NbPortions { get; set; }
+        public DateTime DateFabrication { get; set; }
+        public DateTime DatePeremption { get; set; }
+        public decimal PrixParPersonne { get; set; }
+        public string NationaliteCuisine { get; set; }
+        public string RegimeAlimentaire { get; set; }
+        public string Ingredients { get; set; }
+        public int IDCuisinier { get; set; }
+        public string StationCuisinier { get; set; }
+    }
+
+    // Classe représentant une commande
+    public class Commande
+    {
+        public int ID { get; set; }
         public string Plat { get; set; }
         public int Quantite { get; set; }
         public DateTime DateLivraison { get; set; }
         public string AdresseLivraison { get; set; }
-        public decimal PrixUnitaire { get; set; }
+        public double TempsTrajet { get; set; }
+        public List<string> Chemin { get; set; }
+        public double Distance { get; set; }
+    }
+
+    // Classe représentant un utilisateur
+    public class Utilisateur
+    {
+        public int ID { get; set; }
+        public string Type { get; set; } // "Client", "Cuisinier" ou "Admin"
+        public string SousType { get; set; } // Pour cuisinier : "Particulier" ou "Entreprise"
+        public string Nom { get; set; }
+        public string Prenom { get; set; }
+        public string Email { get; set; }
+        public string MotDePasse { get; set; }
+        public string MetroProche { get; set; }
     }
 }
