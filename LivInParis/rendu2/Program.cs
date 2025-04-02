@@ -90,8 +90,14 @@ namespace GraphProject
             string ville = Console.ReadLine().Trim();
             Console.Write("Téléphone : ");
             string tel = Console.ReadLine().Trim();
+            // Vérification de la station de métro saisie
             Console.Write("Station de métro (votre station) : ");
             string metro = Console.ReadLine().Trim();
+            while (!stationCoordinates.ContainsKey(metro))
+            {
+                Console.Write("La station de métro n'existe pas. Veuillez entrer une station valide : ");
+                metro = Console.ReadLine().Trim();
+            }
 
             // Selon le choix, on peut inscrire l'utilisateur en tant que client, cuisinier ou les deux.
             int idClient = -1, idCuisinier = -1;
@@ -101,7 +107,6 @@ namespace GraphProject
             }
             if (choixRole == "U" || choixRole == "B")
             {
-                // On demande le sous-type de cuisinier
                 Console.Write("Êtes-vous un cuisinier Particulier ou une Entreprise locale ? (P/E) : ");
                 string sousType = Console.ReadLine().Trim().ToUpper();
                 if (sousType == "P")
@@ -128,8 +133,7 @@ namespace GraphProject
                 Console.WriteLine($"Inscription Client réussie ! Votre ID Client est : {idClient}");
             if (idCuisinier != -1)
                 Console.WriteLine($"Inscription Cuisinier réussie ! Votre ID Cuisinier est : {idCuisinier}");
-
-            // Pour la connexion ultérieure, l'utilisateur pourra choisir son rôle.
+            // L'utilisateur pourra choisir son rôle lors de la connexion ultérieure.
         }
 
         static void Connexion()
@@ -328,15 +332,8 @@ namespace GraphProject
             // Le client indique uniquement sa station de métro
             Console.Write("Entrez votre station de métro : ");
             string stationClient = Console.ReadLine().Trim();
-            // La station du cuisinier est récupérée depuis le plat partagé
-            string stationCuisinier = plat.StationCuisinier;
-            if (string.IsNullOrEmpty(stationCuisinier))
-            {
-                Console.WriteLine("La station de métro du cuisinier n'est pas renseignée pour ce plat.");
-                return;
-            }
             var noeudClient = metroGraphe.TrouverNoeud(stationClient);
-            var noeudCuisinier = metroGraphe.TrouverNoeud(stationCuisinier);
+            var noeudCuisinier = metroGraphe.TrouverNoeud(plat.StationCuisinier);
             if (noeudClient == null || noeudCuisinier == null)
             {
                 Console.WriteLine("Erreur : station(s) introuvable(s) dans le graphe.");
