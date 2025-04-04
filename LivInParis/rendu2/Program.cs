@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.IO;
 using System.Windows.Forms;
 using GraphProject;
 
@@ -8,8 +9,8 @@ namespace GraphProject
 {
     class Program
     {
-        // Chemin vers l'Excel contenant les feuilles "Arcs" et "Noeuds"
-        static string cheminExcel = @"C:\Users\hugo3\Documents\LivInParis\MetroParis.xlsx";
+        // Utilisation d'un chemin relatif pour accéder au fichier Excel
+        static string cheminExcel = Path.Combine(AppContext.BaseDirectory, "MetroParis.xlsx");
         static Graphe<string> metroGraphe;
         static Dictionary<string, (double Latitude, double Longitude)> stationCoordinates;
         static DatabaseManager dbManager = new DatabaseManager("localhost", "LivInParis", "root", "1234", 3306);
@@ -25,7 +26,7 @@ namespace GraphProject
 
         static void Main(string[] args)
         {
-            // Chargement du graphe et des coordonnées depuis l'Excel
+            // Chargement du graphe et des coordonnées depuis l'Excel (à partir du répertoire de sortie)
             metroGraphe = new Graphe<string>(oriente: true);
             ExcelImporter.ChargerArcs(metroGraphe, cheminExcel);
             stationCoordinates = ExcelNoeudsImporter.ChargerNoeuds(cheminExcel);
@@ -90,7 +91,7 @@ namespace GraphProject
             string ville = Console.ReadLine().Trim();
             Console.Write("Téléphone : ");
             string tel = Console.ReadLine().Trim();
-            // Vérification de la station de métro saisie
+            // Vérification de la station de métro saisie via les données Excel
             Console.Write("Station de métro (votre station) : ");
             string metro = Console.ReadLine().Trim();
             while (!stationCoordinates.ContainsKey(metro))
@@ -99,7 +100,6 @@ namespace GraphProject
                 metro = Console.ReadLine().Trim();
             }
 
-            // Selon le choix, on peut inscrire l'utilisateur en tant que client, cuisinier ou les deux.
             int idClient = -1, idCuisinier = -1;
             if (choixRole == "C" || choixRole == "B")
             {
@@ -128,12 +128,10 @@ namespace GraphProject
                     Console.WriteLine("Sous-type de cuisinier non reconnu.");
                 }
             }
-            // On affiche les IDs obtenus (s'ils ont été créés)
             if (idClient != -1)
                 Console.WriteLine($"Inscription Client réussie ! Votre ID Client est : {idClient}");
             if (idCuisinier != -1)
                 Console.WriteLine($"Inscription Cuisinier réussie ! Votre ID Cuisinier est : {idCuisinier}");
-            // L'utilisateur pourra choisir son rôle lors de la connexion ultérieure.
         }
 
         static void Connexion()
@@ -188,7 +186,7 @@ namespace GraphProject
                 Console.WriteLine("\n=== Interface Client ===");
                 Console.WriteLine("1. Voir les plats disponibles");
                 Console.WriteLine("2. Commander un plat");
-                Console.WriteLine("3. Voir mes commandes");
+                Console.WriteLine("3. Voir mes commandes (avec état)");
                 Console.WriteLine("4. Se déconnecter");
                 Console.Write("Choix : ");
                 string choix = Console.ReadLine();
@@ -223,7 +221,8 @@ namespace GraphProject
                 Console.WriteLine("1. Partager un plat");
                 Console.WriteLine("2. Voir mes plats partagés");
                 Console.WriteLine("3. Voir les commandes reçues");
-                Console.WriteLine("4. Se déconnecter");
+                Console.WriteLine("4. Mettre à jour l'état d'une commande");
+                Console.WriteLine("5. Se déconnecter");
                 Console.Write("Choix : ");
                 string choix = Console.ReadLine();
                 switch (choix)
@@ -238,6 +237,9 @@ namespace GraphProject
                         VoirCommandesCuisinier();
                         break;
                     case "4":
+                        MettreAJourEtatCommande();
+                        break;
+                    case "5":
                         logout = true;
                         utilisateurConnecte = null;
                         break;
@@ -258,7 +260,8 @@ namespace GraphProject
                 Console.WriteLine("2. Calculer plus court chemin (Bellman-Ford)");
                 Console.WriteLine("3. Calculer tous les plus courts chemins (Floyd-Warshall)");
                 Console.WriteLine("4. Visualiser le chemin graphique (Windows Forms)");
-                Console.WriteLine("5. Retour au menu principal");
+                Console.WriteLine("5. Afficher classement des cuisiniers");
+                Console.WriteLine("6. Retour au menu principal");
                 Console.Write("Choix : ");
                 string choix = Console.ReadLine();
                 switch (choix)
@@ -276,6 +279,9 @@ namespace GraphProject
                         VisualiserCheminGraphiqueAdmin();
                         break;
                     case "5":
+                        AfficherClassementCuisiniers();
+                        break;
+                    case "6":
                         exitAdmin = true;
                         break;
                     default:
@@ -301,7 +307,7 @@ namespace GraphProject
             }
         }
 
-        // Lorsqu'un client commande, la station du cuisinier est prise depuis le plat (définie lors du partage)
+        // Lorsqu'un client commande, la station du cuisinier est prise depuis le plat partagé
         static void CommanderPlat()
         {
             AfficherPlatsDisponibles();
@@ -329,7 +335,7 @@ namespace GraphProject
             decimal montantTotal = plat.PrixParPersonne * quantite;
             Console.WriteLine($"Montant total de la commande : {montantTotal:C}");
 
-            // Le client indique uniquement sa station de métro
+            // Le client indique sa station de métro
             Console.Write("Entrez votre station de métro : ");
             string stationClient = Console.ReadLine().Trim();
             var noeudClient = metroGraphe.TrouverNoeud(stationClient);
@@ -355,7 +361,7 @@ namespace GraphProject
                 Console.WriteLine("Chemin parcouru : " + string.Join(" -> ", chemin));
                 Console.WriteLine($"Distance totale parcourue : {distanceParcourue:F2} km");
 
-                // Enregistrement de la commande
+                // Enregistrement de la commande avec état initial "En attente"
                 Commande commande = new Commande
                 {
                     ID = orderCounter++,
@@ -365,7 +371,8 @@ namespace GraphProject
                     AdresseLivraison = stationClient,
                     TempsTrajet = tempsTrajet,
                     Chemin = chemin,
-                    Distance = distanceParcourue
+                    Distance = distanceParcourue,
+                    Etat = "En attente"
                 };
                 listeCommandesClient.Add(commande);
                 if (!commandeParCuisinier.ContainsKey(plat.IDCuisinier))
@@ -421,13 +428,10 @@ namespace GraphProject
             Console.Write("Ingrédients principaux : ");
             string ingredients = Console.ReadLine().Trim();
 
-            // La station du cuisinier est celle renseignée lors de son inscription
             int idCuisinier = utilisateurConnecte.ID;
-            // Enregistrement en base de données
             dbManager.InsererPlat(nomPlat, typePlat, nbPortions, dateFabrication, datePeremption, prix, nationalite, regime, ingredients, idCuisinier);
 
             int newID = (listePlats.Count > 0) ? listePlats[listePlats.Count - 1].ID + 1 : 1;
-            // On stocke également la station de métro du cuisinier dans le plat partagé
             listePlats.Add(new Plat
             {
                 ID = newID,
@@ -475,7 +479,7 @@ namespace GraphProject
             {
                 foreach (var commande in listeCommandesClient)
                 {
-                    Console.WriteLine($"Commande #{commande.ID}: Plat: {commande.Plat}, Quantité: {commande.Quantite}, Temps trajet: {commande.TempsTrajet}, Distance: {commande.Distance:F2} km");
+                    Console.WriteLine($"Commande #{commande.ID}: Plat: {commande.Plat}, Quantité: {commande.Quantite}, Etat: {commande.Etat}, Temps trajet: {commande.TempsTrajet}, Distance: {commande.Distance:F2} km");
                 }
             }
         }
@@ -492,7 +496,7 @@ namespace GraphProject
             {
                 foreach (var commande in commandeParCuisinier[idCuisinier])
                 {
-                    Console.WriteLine($"Commande #{commande.ID}: Plat: {commande.Plat}, Quantité: {commande.Quantite}, Temps trajet: {commande.TempsTrajet}, Distance: {commande.Distance:F2} km");
+                    Console.WriteLine($"Commande #{commande.ID}: Plat: {commande.Plat}, Quantité: {commande.Quantite}, Etat: {commande.Etat}, Temps trajet: {commande.TempsTrajet}, Distance: {commande.Distance:F2} km");
                 }
                 Console.WriteLine("Souhaitez-vous visualiser le trajet d'une commande ? (O/N)");
                 string rep = Console.ReadLine().Trim().ToUpper();
@@ -516,6 +520,39 @@ namespace GraphProject
                     }
                 }
             }
+        }
+
+        // Méthode pour que le cuisinier mette à jour l'état d'une commande
+        static void MettreAJourEtatCommande()
+        {
+            Console.WriteLine("\n=== Mise à jour de l'état d'une commande ===");
+            int idCuisinier = utilisateurConnecte.ID;
+            if (!commandeParCuisinier.ContainsKey(idCuisinier) || commandeParCuisinier[idCuisinier].Count == 0)
+            {
+                Console.WriteLine("Aucune commande reçue.");
+                return;
+            }
+            foreach (var commande in commandeParCuisinier[idCuisinier])
+            {
+                Console.WriteLine($"Commande #{commande.ID}: Plat: {commande.Plat}, Quantité: {commande.Quantite}, Etat actuel: {commande.Etat}");
+            }
+            Console.Write("Entrez l'ID de la commande à mettre à jour : ");
+            int idCmd;
+            if (!int.TryParse(Console.ReadLine(), out idCmd))
+            {
+                Console.WriteLine("ID invalide.");
+                return;
+            }
+            var cmdToUpdate = commandeParCuisinier[idCuisinier].Find(c => c.ID == idCmd);
+            if (cmdToUpdate == null)
+            {
+                Console.WriteLine("Commande non trouvée.");
+                return;
+            }
+            Console.Write("Nouvel état (ex. 'En cours de livraison', 'Livrée') : ");
+            string nouvelEtat = Console.ReadLine().Trim();
+            cmdToUpdate.Etat = nouvelEtat;
+            Console.WriteLine("L'état de la commande a été mis à jour.");
         }
 
         // Fonctions Admin (démonstration des algorithmes de plus court chemin)
@@ -638,6 +675,37 @@ namespace GraphProject
             }
         }
 
+        // Affichage du classement des cuisiniers (basé sur le nombre de commandes dont l'état est "Livrée")
+        static void AfficherClassementCuisiniers()
+        {
+            Console.WriteLine("\n=== Classement des cuisiniers ===");
+            Dictionary<int, int> classement = new Dictionary<int, int>();
+            foreach (var kvp in commandeParCuisinier)
+            {
+                int idCuisinier = kvp.Key;
+                int deliveredCount = 0;
+                foreach (var commande in kvp.Value)
+                {
+                    if (commande.Etat.Equals("Livrée", StringComparison.OrdinalIgnoreCase))
+                        deliveredCount++;
+                }
+                classement[idCuisinier] = deliveredCount;
+            }
+            // Tri décroissant par nombre de commandes livrées
+            foreach (var item in SortedByValueDescending(classement))
+            {
+                Console.WriteLine($"Cuisinier ID {item.Key} : {item.Value} commande(s) livrée(s)");
+            }
+        }
+
+        // Méthode utilitaire pour trier un dictionnaire par valeur en ordre décroissant
+        static IEnumerable<KeyValuePair<int, int>> SortedByValueDescending(Dictionary<int, int> dict)
+        {
+            var list = new List<KeyValuePair<int, int>>(dict);
+            list.Sort((pair1, pair2) => pair2.Value.CompareTo(pair1.Value));
+            return list;
+        }
+
         static List<string> ReconstruireChemin(Noeud<string> depart, Noeud<string> arrivee, Dictionary<Noeud<string>, Noeud<string>> predecesseurs)
         {
             List<string> chemin = new List<string>();
@@ -701,7 +769,7 @@ namespace GraphProject
         public string StationCuisinier { get; set; }
     }
 
-    // Classe représentant une commande
+    // Classe représentant une commande (ajout de la propriété Etat)
     public class Commande
     {
         public int ID { get; set; }
@@ -712,6 +780,7 @@ namespace GraphProject
         public double TempsTrajet { get; set; }
         public List<string> Chemin { get; set; }
         public double Distance { get; set; }
+        public string Etat { get; set; } // ex. "En attente", "En cours de livraison", "Livrée"
     }
 
     // Classe représentant un utilisateur
