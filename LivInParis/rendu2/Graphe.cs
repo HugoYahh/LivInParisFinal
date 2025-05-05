@@ -1,10 +1,15 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
+using System.IO;
+using System.Text.Json;
+using System.Xml.Serialization;
 
 namespace GraphProject
 {
     /// <summary>
     /// Graphe générique pouvant être orienté ou non, avec des poids (distances, temps, etc.).
+    /// Inclut méthodes de plus court chemin et coloration Welsh-Powell + export JSON/XML.
     /// </summary>
     public class Graphe<T>
     {
@@ -17,9 +22,7 @@ namespace GraphProject
             Oriente = oriente;
         }
 
-        /// <summary>
-        /// Ajoute un nœud au graphe et le retourne.
-        /// </summary>
+        /// <summary>Ajoute un nœud au graphe.</summary>
         public Noeud<T> AjouterNoeud(T valeur)
         {
             var noeud = new Noeud<T>(valeur);
@@ -27,70 +30,36 @@ namespace GraphProject
             return noeud;
         }
 
-        /// <summary>
-        /// Retrouve le nœud ayant la valeur donnée (ou null si inexistant).
-        /// </summary>
+        /// <summary>Retrouve le nœud ayant la valeur donnée.</summary>
         public Noeud<T> TrouverNoeud(T valeur)
         {
             return Noeuds.Find(n => n.Valeur.Equals(valeur));
         }
 
-        /// <summary>
-        /// Ajoute un arc (liaison) entre deux nœuds (source -> cible) avec un poids.
-        /// </summary>
+        /// <summary>Ajoute un arc (liaison) entre deux nœuds (source -> cible) avec un poids.</summary>
         public void AjouterArc(T source, T cible, double poids)
         {
-            var noeudSource = TrouverNoeud(source);
-            var noeudCible = TrouverNoeud(cible);
-
-            if (noeudSource == null)
-                noeudSource = AjouterNoeud(source);
-            if (noeudCible == null)
-                noeudCible = AjouterNoeud(cible);
+            var noeudSource = TrouverNoeud(source) ?? AjouterNoeud(source);
+            var noeudCible = TrouverNoeud(cible) ?? AjouterNoeud(cible);
 
             noeudSource.Adjacents.Add(new Arc<T>(noeudCible, poids));
-
-            // Si le graphe n'est pas orienté, ajouter l'arc dans l'autre sens
             if (!Oriente)
-            {
                 noeudCible.Adjacents.Add(new Arc<T>(noeudSource, poids));
-            }
         }
 
         #region Algorithme de Dijkstra
-        /// <summary>
-        /// Calcule le plus court chemin à partir d'une source via l'algorithme de Dijkstra.
-        /// Retourne un dictionnaire des distances et un dictionnaire des prédécesseurs.
-        /// </summary>
         public (Dictionary<Noeud<T>, double> distances, Dictionary<Noeud<T>, Noeud<T>> predecesseurs)
             Dijkstra(Noeud<T> source)
         {
-            var dist = new Dictionary<Noeud<T>, double>();
-            var pred = new Dictionary<Noeud<T>, Noeud<T>>();
+            var dist = Noeuds.ToDictionary(n => n, n => double.PositiveInfinity);
+            var pred = Noeuds.ToDictionary(n => n, n => (Noeud<T>)null);
             var nonVisites = new List<Noeud<T>>(Noeuds);
 
-            foreach (var noeud in Noeuds)
-            {
-                dist[noeud] = double.PositiveInfinity;
-                pred[noeud] = null;
-            }
             dist[source] = 0;
-
             while (nonVisites.Count > 0)
             {
-                Noeud<T> u = null;
-                double minDist = double.PositiveInfinity;
-                foreach (var n in nonVisites)
-                {
-                    if (dist[n] < minDist)
-                    {
-                        minDist = dist[n];
-                        u = n;
-                    }
-                }
-                if (u == null)
-                    break;
-
+                var u = nonVisites.OrderBy(n => dist[n]).FirstOrDefault();
+                if (u == null || double.IsInfinity(dist[u])) break;
                 nonVisites.Remove(u);
 
                 foreach (var arc in u.Adjacents)
@@ -108,124 +77,77 @@ namespace GraphProject
         #endregion
 
         #region Algorithme de Bellman-Ford
-        /// <summary>
-        /// Calcule le plus court chemin à partir d'une source via l'algorithme de Bellman-Ford.
-        /// </summary>
         public (Dictionary<Noeud<T>, double> distances, Dictionary<Noeud<T>, Noeud<T>> predecesseurs)
             BellmanFord(Noeud<T> source)
         {
-            var dist = new Dictionary<Noeud<T>, double>();
-            var pred = new Dictionary<Noeud<T>, Noeud<T>>();
-
-            foreach (var noeud in Noeuds)
-            {
-                dist[noeud] = double.PositiveInfinity;
-                pred[noeud] = null;
-            }
+            var dist = Noeuds.ToDictionary(n => n, n => double.PositiveInfinity);
+            var pred = Noeuds.ToDictionary(n => n, n => (Noeud<T>)null);
             dist[source] = 0;
 
             for (int i = 0; i < Noeuds.Count - 1; i++)
-            {
                 foreach (var noeud in Noeuds)
-                {
                     foreach (var arc in noeud.Adjacents)
-                    {
-                        double alt = dist[noeud] + arc.Poids;
-                        if (alt < dist[arc.Cible])
+                        if (dist[noeud] + arc.Poids < dist[arc.Cible])
                         {
-                            dist[arc.Cible] = alt;
+                            dist[arc.Cible] = dist[noeud] + arc.Poids;
                             pred[arc.Cible] = noeud;
                         }
-                    }
-                }
-            }
 
-            // Détection de cycle de poids négatif (optionnel)
             foreach (var noeud in Noeuds)
-            {
                 foreach (var arc in noeud.Adjacents)
-                {
-                    double alt = dist[noeud] + arc.Poids;
-                    if (alt < dist[arc.Cible])
-                    {
+                    if (dist[noeud] + arc.Poids < dist[arc.Cible])
                         Console.WriteLine("Cycle de poids négatif détecté !");
-                    }
-                }
-            }
+
             return (dist, pred);
         }
         #endregion
 
         #region Algorithme de Floyd-Warshall
-        /// <summary>
-        /// Calcule tous les plus courts chemins entre tous les couples de nœuds.
-        /// Retourne une matrice de distances et un dictionnaire pour la reconstruction des chemins.
-        /// </summary>
-        public (Dictionary<(Noeud<T>, Noeud<T>), double> dist, Dictionary<(Noeud<T>, Noeud<T>), Noeud<T>> next)
+        public (Dictionary<(Noeud<T>, Noeud<T>), double> dist,
+                Dictionary<(Noeud<T>, Noeud<T>), Noeud<T>> next)
             FloydWarshall()
         {
             var dist = new Dictionary<(Noeud<T>, Noeud<T>), double>();
             var next = new Dictionary<(Noeud<T>, Noeud<T>), Noeud<T>>();
 
             foreach (var i in Noeuds)
+            foreach (var j in Noeuds)
             {
-                foreach (var j in Noeuds)
+                var key = (i, j);
+                if (i.Equals(j))
                 {
-                    var tuple = (i, j);
-                    if (i.Equals(j))
-                    {
-                        dist[tuple] = 0;
-                        next[tuple] = null;
-                    }
-                    else
-                    {
-                        double poids = double.PositiveInfinity;
-                        foreach (var arc in i.Adjacents)
-                        {
-                            if (arc.Cible.Equals(j))
-                            {
-                                poids = arc.Poids;
-                                break;
-                            }
-                        }
-                        dist[tuple] = poids;
-                        next[tuple] = (poids < double.PositiveInfinity) ? j : null;
-                    }
+                    dist[key] = 0;
+                    next[key] = null;
+                }
+                else
+                {
+                    var arc = i.Adjacents.FirstOrDefault(a => a.Cible.Equals(j));
+                    dist[key] = arc?.Poids ?? double.PositiveInfinity;
+                    next[key] = arc != null ? j : null;
                 }
             }
 
             foreach (var k in Noeuds)
+            foreach (var i in Noeuds)
+            foreach (var j in Noeuds)
             {
-                foreach (var i in Noeuds)
+                var ik = (i, k);
+                var kj = (k, j);
+                var ij = (i, j);
+                if (dist[ik] + dist[kj] < dist[ij])
                 {
-                    foreach (var j in Noeuds)
-                    {
-                        var ij = (i, j);
-                        var ik = (i, k);
-                        var kj = (k, j);
-
-                        if (dist[ik] + dist[kj] < dist[ij])
-                        {
-                            dist[ij] = dist[ik] + dist[kj];
-                            next[ij] = next[ik];
-                        }
-                    }
+                    dist[ij] = dist[ik] + dist[kj];
+                    next[ij] = next[ik];
                 }
             }
             return (dist, next);
         }
 
-        /// <summary>
-        /// Reconstruit le chemin entre deux nœuds après Floyd-Warshall.
-        /// </summary>
         public List<Noeud<T>> ReconstituerCheminFloyd(Noeud<T> i, Noeud<T> j,
             Dictionary<(Noeud<T>, Noeud<T>), Noeud<T>> next)
         {
             var chemin = new List<Noeud<T>>();
-            if (next[(i, j)] == null)
-            {
-                return chemin; // aucun chemin
-            }
+            if (next[(i, j)] == null) return chemin;
             var courant = i;
             while (!courant.Equals(j))
             {
@@ -236,5 +158,75 @@ namespace GraphProject
             return chemin;
         }
         #endregion
+
+        #region Coloration Welsh-Powell & Export
+
+        /// <summary>
+        /// Applique l'algorithme de Welsh-Powell et retourne un dictionnaire mapping chaque nœud à une couleur (1,2,...).
+        /// </summary>
+        public Dictionary<Noeud<T>, int> WelshPowellColoring()
+        {
+            // 1) Trier les nœuds par degré décroissant
+            var ordre = Noeuds.OrderByDescending(n => n.Adjacents.Count).ToList();
+            var coloring = new Dictionary<Noeud<T>, int>();
+            int couleur = 0;
+
+            // 2) Tant que des nœuds non coloriés restent
+            while (ordre.Any(n => !coloring.ContainsKey(n)))
+            {
+                couleur++;
+                foreach (var noeud in ordre)
+                {
+                    if (coloring.ContainsKey(noeud)) continue;
+                    // Vérifier si un voisin a déjà cette couleur
+                    bool voisinDejaColorie = noeud.Adjacents
+                        .Any(a => coloring.TryGetValue(a.Cible, out int c) && c == couleur);
+                    if (!voisinDejaColorie)
+                        coloring[noeud] = couleur;
+                }
+            }
+            return coloring;
+        }
+
+        /// <summary>
+        /// Exporte les résultats de la coloration en JSON (node->color) dans le fichier spécifié.
+        /// </summary>
+        public void ExportColoringJson(string filePath)
+        {
+            var coloring = WelshPowellColoring();
+            var exportDict = coloring.ToDictionary(
+                kvp => kvp.Key.Valeur.ToString(),
+                kvp => kvp.Value);
+            var options = new JsonSerializerOptions { WriteIndented = true };
+            var json = JsonSerializer.Serialize(exportDict, options);
+            File.WriteAllText(filePath, json);
+        }
+
+        /// <summary>
+        /// Exporte les résultats de la coloration en XML (liste NodeColor) dans le fichier spécifié.
+        /// </summary>
+        public void ExportColoringXml(string filePath)
+        {
+            var coloring = WelshPowellColoring();
+            var list = coloring.Select(kvp => new NodeColor
+            {
+                Node = kvp.Key.Valeur.ToString(),
+                Color = kvp.Value
+            }).ToList();
+            var serializer = new XmlSerializer(typeof(List<NodeColor>));
+            using var writer = new StreamWriter(filePath);
+            serializer.Serialize(writer, list);
+        }
+
+        #endregion
+    }
+
+    /// <summary>
+    /// Classe auxiliaire pour la sérialisation XML de la coloration.
+    /// </summary>
+    public class NodeColor
+    {
+        public string Node { get; set; }
+        public int Color { get; set; }
     }
 }

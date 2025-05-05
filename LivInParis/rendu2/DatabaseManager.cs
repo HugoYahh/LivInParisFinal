@@ -5,13 +5,63 @@ namespace GraphProject
 {
     public class DatabaseManager
     {
-        private string connectionString;
+        private readonly string connectionString;
+
+        /// <summary>
+        /// Initialise un nouveau DatabaseManager avec les paramètres de connexion.
+        /// </summary>
 
         public DatabaseManager(string server, string database, string user, string password, int port = 3306)
         {
             connectionString = $"SERVER={server};PORT={port};DATABASE={database};UID={user};PASSWORD={password};";
         }
+        
+        /// <summary>
+        /// Charge toutes les commandes et leurs lignes associées depuis la base de données.
+        /// </summary>
+        public List<Commande> ObtenirToutesCommandes()
+        {
+            var liste = new List<Commande>();
+            using var conn = new MySqlConnection(connectionString);
+            conn.Open();
+            string sql = @"
+            SELECT
+                cmd.ID_commande,
+                ldc.ID_plat,
+                p.Nom_plat,
+                ldc.Quantité_plat,
+                ldc.Date_livraison,
+                ldc.Adresse_livraison,
+                cmd.Statut_Commande,
+                cmd.Prix_tot,
+                liv.ID_cuisinier
+            FROM Commande cmd
+            JOIN Ligne_de_commande ldc ON ldc.ID_commande = cmd.ID_commande
+            JOIN Plat p               ON p.ID_plat        = ldc.ID_plat
+            JOIN Livraison liv        ON liv.ID_commande  = cmd.ID_commande;
+            ";
+            using var cmd = new MySqlCommand(sql, conn);
+            using var rd  = cmd.ExecuteReader();
+            while (rd.Read())
+            {
+                liste.Add(new Commande
+                {
+                    ID               = rd.GetInt32("ID_commande"),
+                    Plat             = rd.GetString("Nom_plat"),
+                    Quantite         = rd.GetInt32("Quantité_plat"),
+                    DateLivraison    = rd.GetDateTime("Date_livraison"),
+                    AdresseLivraison = rd.GetString("Adresse_livraison"),
+                    Etat             = rd.GetString("Statut_Commande"),
+                    MontantTotal     = rd.GetDecimal("Prix_tot"),
+                    IDCuisinier      = rd.GetInt32("ID_cuisinier")  // <--- on renseigne ici
+                });
+            }
+            return liste;
+        }
 
+         /// <summary>
+        /// Teste la connexion MySQL en ouvrant et fermant une connexion.
+        /// </summary>
         public bool TestConnexion()
         {
             try
@@ -29,7 +79,9 @@ namespace GraphProject
                 return false;
             }
         }
-
+        /// <summary>
+        /// Affiche dans la console la liste de tous les clients.
+        /// </summary>
         public void ListerClients()
         {
             try
@@ -57,7 +109,10 @@ namespace GraphProject
             }
         }
 
-        // Insertion Client : retourne l'ID généré
+        
+        /// <summary>
+        /// Insertion d'un nouveau client et retourne son ID généré.
+        /// </summary>²
         public int InsererClient(string nom, string prenom, string rue, string numRue, int codePostal, string ville, string tel, string email, string metro, string motDePasse)
         {
             try
@@ -91,7 +146,9 @@ namespace GraphProject
             }
         }
 
-        // Insertion Cuisinier Particulier : retourne l'ID généré
+        /// <summary>
+        /// Insertion d'un cuisinier de type particulier et retourne son ID généré.
+        /// </summary>
         public int InsererCuisinierParticulier(string nom, string prenom, string rue, string numRue, int codePostal, string ville, string tel, string email, string metro, string motDePasse, string infosComplementaires)
         {
             try
@@ -126,7 +183,9 @@ namespace GraphProject
             }
         }
 
-        // Insertion Cuisinier Entreprise : retourne l'ID généré
+        /// <summary>
+        /// Insertion d'un cuisinier de type entreprise et retourne son ID généré.
+        /// </summary>
         public int InsererCuisinierEntreprise(string nom, string prenom, string rue, string numRue, int codePostal, string ville, string tel, string email, string metro, string motDePasse, string nomEntreprise, string referentCommunication)
         {
             try
@@ -162,7 +221,9 @@ namespace GraphProject
             }
         }
 
-        // Insertion d'un plat partagé par un cuisinier
+         /// <summary>
+        /// Insertion d'un plat partagé par un cuisinier.
+        /// </summary>
         public void InsererPlat(string nomPlat, string typePlat, int nbPortions, DateTime dateFabrication, DateTime datePeremption, decimal prixParPersonne, string nationaliteCuisine, string regimeAlimentaire, string ingredients, int idCuisinier)
         {
             try
@@ -193,77 +254,131 @@ namespace GraphProject
             }
         }
 
-        // Obtention d'un Client via Email et Mot de Passe
-        public Utilisateur ObtenirClientByEmail(string email, string motDePasse)
+         /// <summary>
+        /// Charge les relations client–cuisinier issues des commandes existantes.
+        /// </summary>
+        public List<(int clientId, int cuisinierId)> ChargerRelationsClientCuisinier()
         {
-            try
+            var liste = new List<(int, int)>();
+            using var conn = new MySqlConnection(connectionString);
+            conn.Open();
+            string sql = @"
+            SELECT DISTINCT c.ID_client, p.ID_cuisinier
+            FROM Commande c
+            JOIN Livraison l ON l.ID_commande = c.ID_commande
+            JOIN Cuisinier p ON p.ID_cuisinier = l.ID_cuisinier
+            ";
+            using var cmd = new MySqlCommand(sql, conn);
+            using var rd = cmd.ExecuteReader();
+            while (rd.Read())
+                liste.Add(( rd.GetInt32(0), rd.GetInt32(1) ));
+            return liste;
+        }
+
+
+        /// <summary>
+        /// Obtient un client à partir de son email et mot de passe.
+        /// </summary>
+        public Utilisateur ObtenirClientByEmail(string email, string mdp)
+        {
+            using var conn = new MySqlConnection(connectionString);
+            conn.Open();
+            string sql = "SELECT * FROM Client WHERE Adresse_mail_client=@mail AND Mot_de_passe=@mdp";
+            var cmd = new MySqlCommand(sql, conn);
+            cmd.Parameters.AddWithValue("@mail", email);
+            cmd.Parameters.AddWithValue("@mdp", mdp);
+            using var reader = cmd.ExecuteReader();
+            if (reader.Read())
             {
-                using (var conn = new MySqlConnection(connectionString))
+                return new Utilisateur
                 {
-                    conn.Open();
-                    string query = "SELECT * FROM Client WHERE Adresse_mail_client = @email AND Mot_de_passe = @motDePasse";
-                    MySqlCommand cmd = new MySqlCommand(query, conn);
-                    cmd.Parameters.AddWithValue("@email", email);
-                    cmd.Parameters.AddWithValue("@motDePasse", motDePasse);
-                    using (var reader = cmd.ExecuteReader())
-                    {
-                        if (reader.Read())
-                        {
-                            Utilisateur u = new Utilisateur();
-                            u.ID = reader.GetInt32("ID_client");
-                            u.Type = "Client";
-                            u.Nom = reader.GetString("Nom_client");
-                            u.Prenom = reader.GetString("Prenom_client");
-                            u.Email = reader.GetString("Adresse_mail_client");
-                            u.MotDePasse = reader.GetString("Mot_de_passe");
-                            u.MetroProche = reader.GetString("Metro_proche");
-                            return u;
-                        }
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine("Erreur lors de la récupération du client : " + ex.Message);
+                    ID = reader.GetInt32("ID_client"),
+                    Type = "Client",
+                    Nom = reader.GetString("Nom_client"),
+                    Prenom = reader.GetString("Prenom_client"),
+                    Email = reader.GetString("Adresse_mail_client"),
+                    MotDePasse = mdp,
+                    MetroProche = reader.GetString("Metro_proche")
+                };
             }
             return null;
         }
 
-        // Obtention d'un Cuisinier via Email et Mot de Passe
-        public Utilisateur ObtenirCuisinierByEmail(string email, string motDePasse)
+        /// <summary>
+        /// Obtient un cuisinier à partir de son email et mot de passe.
+        /// </summary>
+        public Utilisateur ObtenirCuisinierByEmail(string email, string mdp)
         {
-            try
+            using var conn = new MySqlConnection(connectionString);
+            conn.Open();
+            string sql = "SELECT * FROM Cuisinier WHERE Adresse_mail_cuisinier=@mail AND Mot_de_passe=@mdp";
+            var cmd = new MySqlCommand(sql, conn);
+            cmd.Parameters.AddWithValue("@mail", email);
+            cmd.Parameters.AddWithValue("@mdp", mdp);
+            using var reader = cmd.ExecuteReader();
+            if (reader.Read())
             {
-                using (var conn = new MySqlConnection(connectionString))
+                return new Utilisateur
                 {
-                    conn.Open();
-                    string query = "SELECT * FROM Cuisinier WHERE Adresse_mail_cuisinier = @email AND Mot_de_passe = @motDePasse";
-                    MySqlCommand cmd = new MySqlCommand(query, conn);
-                    cmd.Parameters.AddWithValue("@email", email);
-                    cmd.Parameters.AddWithValue("@motDePasse", motDePasse);
-                    using (var reader = cmd.ExecuteReader())
-                    {
-                        if (reader.Read())
-                        {
-                            Utilisateur u = new Utilisateur();
-                            u.ID = reader.GetInt32("ID_cuisinier");
-                            u.Type = "Cuisinier";
-                            u.Nom = reader.GetString("Nom_cuisinier");
-                            u.Prenom = reader.GetString("Prenom_cuisinier");
-                            u.Email = reader.GetString("Adresse_mail_cuisinier");
-                            u.MotDePasse = reader.GetString("Mot_de_passe");
-                            u.MetroProche = reader.GetString("Metro_proche_cuisinier");
-                            u.SousType = reader.GetString("Type_cuisinier");
-                            return u;
-                        }
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine("Erreur lors de la récupération du cuisinier : " + ex.Message);
+                    ID = reader.GetInt32("ID_cuisinier"),
+                    Type = "Cuisinier",
+                    SousType = reader.GetString("Type_cuisinier"),
+                    Nom = reader.GetString("Nom_cuisinier"),
+                    Prenom = reader.GetString("Prenom_cuisinier"),
+                    Email = reader.GetString("Adresse_mail_cuisinier"),
+                    MotDePasse = mdp,
+                    MetroProche = reader.GetString("Metro_proche_cuisinier")
+                };
             }
             return null;
+        }
+        /// <summary>
+        /// Met à jour les informations de base d'un client existant.
+        /// </summary>
+        public void MettreAJourClient(int id, string nom, string prenom, string tel)
+        {
+            using var conn = new MySqlConnection(connectionString);
+            conn.Open();
+            string sql = "UPDATE Client SET Nom_client=@nom, Prenom_client=@prenom, Num_client=@tel WHERE ID_client=@id";
+            var cmd = new MySqlCommand(sql, conn);
+            cmd.Parameters.AddWithValue("@nom", nom);
+            cmd.Parameters.AddWithValue("@prenom", prenom);
+            cmd.Parameters.AddWithValue("@tel", tel);
+            cmd.Parameters.AddWithValue("@id", id);
+            cmd.ExecuteNonQuery();
+        }
+
+        public void MettreAJourCuisinier(int id, string nom, string prenom, string tel)
+        {
+            using var conn = new MySqlConnection(connectionString);
+            conn.Open();
+            string sql = "UPDATE Cuisinier SET Nom_cuisinier=@nom, Prenom_cuisinier=@prenom, Num_cuisinier=@tel WHERE ID_cuisinier=@id";
+            var cmd = new MySqlCommand(sql, conn);
+            cmd.Parameters.AddWithValue("@nom", nom);
+            cmd.Parameters.AddWithValue("@prenom", prenom);
+            cmd.Parameters.AddWithValue("@tel", tel);
+            cmd.Parameters.AddWithValue("@id", id);
+            cmd.ExecuteNonQuery();
+        }
+
+        public void SupprimerClient(int id)
+        {
+            using var conn = new MySqlConnection(connectionString);
+            conn.Open();
+            string sql = "DELETE FROM Client WHERE ID_client=@id";
+            var cmd = new MySqlCommand(sql, conn);
+            cmd.Parameters.AddWithValue("@id", id);
+            cmd.ExecuteNonQuery();
+        }
+
+        public void SupprimerCuisinier(int id)
+        {
+            using var conn = new MySqlConnection(connectionString);
+            conn.Open();
+            string sql = "DELETE FROM Cuisinier WHERE ID_cuisinier=@id";
+            var cmd = new MySqlCommand(sql, conn);
+            cmd.Parameters.AddWithValue("@id", id);
+            cmd.ExecuteNonQuery();
         }
     }
 }

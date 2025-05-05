@@ -1,35 +1,46 @@
-﻿using System;
+﻿
+using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
+using System.Linq;
 using System.Windows.Forms;
-using GraphProject;
 
 namespace GraphProject
 {
     class Program
     {
-        // Utilisation d'un chemin relatif pour accéder au fichier Excel
+        /// <summary>
+        /// Chemin relatif vers l’Excel (Build Action = Content, Copy to Output Directory)
         static string cheminExcel = Path.Combine(AppContext.BaseDirectory, "MetroParis.xlsx");
         static Graphe<string> metroGraphe;
         static Dictionary<string, (double Latitude, double Longitude)> stationCoordinates;
         static DatabaseManager dbManager = new DatabaseManager("localhost", "LivInParis", "root", "1234", 3306);
 
-        // Listes simulant les plats partagés et les commandes
         static List<Plat> listePlats = new List<Plat>();
         static List<Commande> listeCommandesClient = new List<Commande>();
         static Dictionary<int, List<Commande>> commandeParCuisinier = new Dictionary<int, List<Commande>>();
         static int orderCounter = 1;
 
-        // Utilisateur connecté (peut être Client et/ou Cuisinier)
         static Utilisateur utilisateurConnecte = null;
 
+        [STAThread]
         static void Main(string[] args)
         {
-            // Chargement du graphe et des coordonnées depuis l'Excel (à partir du répertoire de sortie)
+            Application.EnableVisualStyles();
+            Application.SetCompatibleTextRenderingDefault(false);
+
             metroGraphe = new Graphe<string>(oriente: true);
             ExcelImporter.ChargerArcs(metroGraphe, cheminExcel);
             stationCoordinates = ExcelNoeudsImporter.ChargerNoeuds(cheminExcel);
+
+            listeCommandesClient = dbManager.ObtenirToutesCommandes();
+            /// <summary>
+            /// Reconstruire commandeParCuisinier EN MEMOIRE à partir de la seule propriété IDCuisinier
+            commandeParCuisinier = listeCommandesClient
+                .GroupBy(c => c.IDCuisinier)
+                .ToDictionary(g => g.Key, g => g.ToList());
+
 
             bool exit = false;
             while (!exit)
@@ -40,24 +51,13 @@ namespace GraphProject
                 Console.WriteLine("3. Admin");
                 Console.WriteLine("4. Quitter");
                 Console.Write("Choix : ");
-                string choix = Console.ReadLine();
-                switch (choix)
+                switch (Console.ReadLine()?.Trim())
                 {
-                    case "1":
-                        Inscription();
-                        break;
-                    case "2":
-                        Connexion();
-                        break;
-                    case "3":
-                        AdminMenu();
-                        break;
-                    case "4":
-                        exit = true;
-                        break;
-                    default:
-                        Console.WriteLine("Choix invalide.");
-                        break;
+                    case "1": Inscription(); break;
+                    case "2": Connexion();    break;
+                    case "3": AdminMenu();    break;
+                    case "4": exit = true;    break;
+                    default:  Console.WriteLine("Choix invalide."); break;
                 }
             }
             Console.WriteLine("Merci d'avoir utilisé LivInParis.");
@@ -66,116 +66,91 @@ namespace GraphProject
         static void Inscription()
         {
             Console.WriteLine("\n=== Inscription ===");
-            Console.Write("Êtes-vous Client, Cuisinier ou les 2 ? (C/U/B pour Both) : ");
-            string choixRole = Console.ReadLine().Trim().ToUpper();
+            Console.Write("Rôle (C=Client, U=Cuisinier, B=Both) : ");
+            var role = Console.ReadLine().Trim().ToUpper();
 
             Console.Write("Nom : ");
-            string nom = Console.ReadLine().Trim();
+            var nom = Console.ReadLine().Trim();
             Console.Write("Prénom : ");
-            string prenom = Console.ReadLine().Trim();
-            Console.Write("Adresse email : ");
-            string email = Console.ReadLine().Trim();
+            var prenom = Console.ReadLine().Trim();
+            Console.Write("Email : ");
+            var email = Console.ReadLine().Trim();
             Console.Write("Mot de passe : ");
-            string motDePasse = Console.ReadLine().Trim();
+            var mdp = Console.ReadLine().Trim();
             Console.Write("Rue : ");
-            string rue = Console.ReadLine().Trim();
+            var rue = Console.ReadLine().Trim();
             Console.Write("Numéro de rue : ");
-            string numRue = Console.ReadLine().Trim();
+            var numRue = Console.ReadLine().Trim();
+
             Console.Write("Code postal : ");
-            int codePostal;
-            while (!int.TryParse(Console.ReadLine(), out codePostal))
-            {
-                Console.Write("Veuillez entrer un code postal valide : ");
-            }
+            int cp;
+            while (!int.TryParse(Console.ReadLine(), out cp))
+                Console.Write("Code postal invalide, réessayez : ");
+
             Console.Write("Ville : ");
-            string ville = Console.ReadLine().Trim();
+            var ville = Console.ReadLine().Trim();
             Console.Write("Téléphone : ");
-            string tel = Console.ReadLine().Trim();
-            // Vérification de la station de métro saisie via les données Excel
-            Console.Write("Station de métro (votre station) : ");
-            string metro = Console.ReadLine().Trim();
-            while (!stationCoordinates.ContainsKey(metro))
-            {
-                Console.Write("La station de métro n'existe pas. Veuillez entrer une station valide : ");
-                metro = Console.ReadLine().Trim();
-            }
+            var tel = Console.ReadLine().Trim();
+
+            Console.Write("Station métro : ");
+            string metro;
+            while (!stationCoordinates.ContainsKey(metro = Console.ReadLine().Trim()))
+                Console.Write("Station inconnue, réessayez : ");
 
             int idClient = -1, idCuisinier = -1;
-            if (choixRole == "C" || choixRole == "B")
+            if (role == "C" || role == "B")
+                idClient = dbManager.InsererClient(nom, prenom, rue, numRue, cp, ville, tel, email, metro, mdp);
+
+            if (role == "U" || role == "B")
             {
-                idClient = dbManager.InsererClient(nom, prenom, rue, numRue, codePostal, ville, tel, email, metro, motDePasse);
-            }
-            if (choixRole == "U" || choixRole == "B")
-            {
-                Console.Write("Êtes-vous un cuisinier Particulier ou une Entreprise locale ? (P/E) : ");
-                string sousType = Console.ReadLine().Trim().ToUpper();
-                if (sousType == "P")
+                Console.Write("Particulier (P) ou Entreprise (E) ? ");
+                var st = Console.ReadLine().Trim().ToUpper();
+                if (st == "P")
                 {
-                    Console.Write("Informations complémentaires (optionnel) : ");
-                    string infosComplementaires = Console.ReadLine().Trim();
-                    idCuisinier = dbManager.InsererCuisinierParticulier(nom, prenom, rue, numRue, codePostal, ville, tel, email, metro, motDePasse, infosComplementaires);
+                    Console.Write("Infos complémentaires : ");
+                    var infos = Console.ReadLine().Trim();
+                    idCuisinier = dbManager.InsererCuisinierParticulier(nom, prenom, rue, numRue, cp, ville, tel, email, metro, mdp, infos);
                 }
-                else if (sousType == "E")
+                else if (st == "E")
                 {
-                    Console.Write("Nom de l'entreprise : ");
-                    string nomEntreprise = Console.ReadLine().Trim();
-                    Console.Write("Nom du référent communication (optionnel) : ");
-                    string referent = Console.ReadLine().Trim();
-                    idCuisinier = dbManager.InsererCuisinierEntreprise(nom, prenom, rue, numRue, codePostal, ville, tel, email, metro, motDePasse, nomEntreprise, referent);
+                    Console.Write("Nom entreprise : ");
+                    var ne = Console.ReadLine().Trim();
+                    Console.Write("Référent comm. : ");
+                    var rc = Console.ReadLine().Trim();
+                    idCuisinier = dbManager.InsererCuisinierEntreprise(nom, prenom, rue, numRue, cp, ville, tel, email, metro, mdp, ne, rc);
                 }
                 else
-                {
-                    Console.WriteLine("Sous-type de cuisinier non reconnu.");
-                }
+                    Console.WriteLine("Sous-type non reconnu.");
             }
-            if (idClient != -1)
-                Console.WriteLine($"Inscription Client réussie ! Votre ID Client est : {idClient}");
-            if (idCuisinier != -1)
-                Console.WriteLine($"Inscription Cuisinier réussie ! Votre ID Cuisinier est : {idCuisinier}");
+
+            if (idClient > 0)    Console.WriteLine($"→ ID Client : {idClient}");
+            if (idCuisinier > 0) Console.WriteLine($"→ ID Cuisinier : {idCuisinier}");
         }
 
         static void Connexion()
         {
             Console.WriteLine("\n=== Connexion ===");
-            Console.Write("Adresse email : ");
-            string email = Console.ReadLine().Trim();
+            Console.Write("Email : ");
+            var email = Console.ReadLine().Trim();
             Console.Write("Mot de passe : ");
-            string motDePasse = Console.ReadLine().Trim();
-            Console.Write("Se connecter en tant que Client ou Cuisinier ? (C/U) : ");
-            string role = Console.ReadLine().Trim().ToUpper();
+            var mdp   = Console.ReadLine().Trim();
+            Console.Write("Client (C) ou Cuisinier (U) ? ");
+            var role  = Console.ReadLine().Trim().ToUpper();
 
             if (role == "C")
             {
-                Utilisateur user = dbManager.ObtenirClientByEmail(email, motDePasse);
-                if (user != null)
-                {
-                    Console.WriteLine("Connexion Client réussie !");
-                    utilisateurConnecte = user;
-                    MenuClient();
-                }
-                else
-                {
-                    Console.WriteLine("Échec de la connexion pour le Client.");
-                }
+                var u = dbManager.ObtenirClientByEmail(email, mdp);
+                if (u != null) { utilisateurConnecte = u; MenuClient(); }
+                else          Console.WriteLine("Échec connexion Client.");
             }
             else if (role == "U")
             {
-                Utilisateur user = dbManager.ObtenirCuisinierByEmail(email, motDePasse);
-                if (user != null)
-                {
-                    Console.WriteLine("Connexion Cuisinier réussie !");
-                    utilisateurConnecte = user;
-                    MenuCuisinier();
-                }
-                else
-                {
-                    Console.WriteLine("Échec de la connexion pour le Cuisinier.");
-                }
+                var u = dbManager.ObtenirCuisinierByEmail(email, mdp);
+                if (u != null) { utilisateurConnecte = u; MenuCuisinier(); }
+                else          Console.WriteLine("Échec connexion Cuisinier.");
             }
             else
-            {
                 Console.WriteLine("Rôle non reconnu.");
-            }
         }
 
         static void MenuClient()
@@ -183,31 +158,23 @@ namespace GraphProject
             bool logout = false;
             while (!logout)
             {
-                Console.WriteLine("\n=== Interface Client ===");
-                Console.WriteLine("1. Voir les plats disponibles");
-                Console.WriteLine("2. Commander un plat");
-                Console.WriteLine("3. Voir mes commandes (avec état)");
-                Console.WriteLine("4. Se déconnecter");
+                Console.WriteLine("\n--- Menu Client ---");
+                Console.WriteLine("1. Voir plats");
+                Console.WriteLine("2. Commander");
+                Console.WriteLine("3. Historique & état");
+                Console.WriteLine("4. Modifier mon compte");
+                Console.WriteLine("5. Supprimer mon compte");
+                Console.WriteLine("6. Déconnexion");
                 Console.Write("Choix : ");
-                string choix = Console.ReadLine();
-                switch (choix)
+                switch (Console.ReadLine().Trim())
                 {
-                    case "1":
-                        AfficherPlatsDisponibles();
-                        break;
-                    case "2":
-                        CommanderPlat();
-                        break;
-                    case "3":
-                        VoirMesCommandesClient();
-                        break;
-                    case "4":
-                        logout = true;
-                        utilisateurConnecte = null;
-                        break;
-                    default:
-                        Console.WriteLine("Choix invalide.");
-                        break;
+                    case "1": AfficherPlatsDisponibles();  break;
+                    case "2": CommanderPlat();             break;
+                    case "3": VoirMesCommandesClient();    break;
+                    case "4": ModifierCompte();            break;
+                    case "5": SupprimerCompte(); logout = true; break;
+                    case "6": logout = true; utilisateurConnecte = null; break;
+                    default:  Console.WriteLine("Choix invalide."); break;
                 }
             }
         }
@@ -217,234 +184,301 @@ namespace GraphProject
             bool logout = false;
             while (!logout)
             {
-                Console.WriteLine("\n=== Interface Cuisinier ===");
+                Console.WriteLine("\n--- Menu Cuisinier ---");
                 Console.WriteLine("1. Partager un plat");
                 Console.WriteLine("2. Voir mes plats partagés");
-                Console.WriteLine("3. Voir les commandes reçues");
-                Console.WriteLine("4. Mettre à jour l'état d'une commande");
-                Console.WriteLine("5. Se déconnecter");
+                Console.WriteLine("3. Voir commandes reçues");
+                Console.WriteLine("4. Mettre à jour état");
+                Console.WriteLine("5. Modifier mon compte");
+                Console.WriteLine("6. Supprimer mon compte");
+                Console.WriteLine("7. Déconnexion");
                 Console.Write("Choix : ");
-                string choix = Console.ReadLine();
-                switch (choix)
+                switch (Console.ReadLine().Trim())
                 {
-                    case "1":
-                        PartagerPlat();
-                        break;
-                    case "2":
-                        VoirMesPlatsPartages();
-                        break;
-                    case "3":
-                        VoirCommandesCuisinier();
-                        break;
-                    case "4":
-                        MettreAJourEtatCommande();
-                        break;
-                    case "5":
-                        logout = true;
-                        utilisateurConnecte = null;
-                        break;
-                    default:
-                        Console.WriteLine("Choix invalide.");
-                        break;
+                    case "1": PartagerPlat();            break;
+                    case "2": VoirMesPlatsPartages();    break;
+                    case "3": VoirCommandesCuisinier();  break;
+                    case "4": MettreAJourEtatCommande(); break;
+                    case "5": ModifierCompte();          break;
+                    case "6": SupprimerCompte(); logout = true; break;
+                    case "7": logout = true; utilisateurConnecte = null; break;
+                    default:  Console.WriteLine("Choix invalide."); break;
                 }
             }
         }
 
         static void AdminMenu()
         {
-            Console.WriteLine("\n=== Interface Admin ===");
-            bool exitAdmin = false;
-            while (!exitAdmin)
+            bool exit = false;
+            while (!exit)
             {
-                Console.WriteLine("1. Calculer plus court chemin (Dijkstra)");
-                Console.WriteLine("2. Calculer plus court chemin (Bellman-Ford)");
-                Console.WriteLine("3. Calculer tous les plus courts chemins (Floyd-Warshall)");
-                Console.WriteLine("4. Visualiser le chemin graphique (Windows Forms)");
-                Console.WriteLine("5. Afficher classement des cuisiniers");
-                Console.WriteLine("6. Retour au menu principal");
+                Console.WriteLine("\n--- Menu Admin ---");
+                Console.WriteLine("1. Dijkstra");
+                Console.WriteLine("2. Bellman-Ford");
+                Console.WriteLine("3. Floyd-Warshall");
+                Console.WriteLine("4. Visualiser trajet");
+                Console.WriteLine("5. Classement cuisiniers");
+                Console.WriteLine("6. Coloration graphe RATP");
+                Console.WriteLine("7. Coloration graphe Clients↔Cuisiniers");
+                Console.WriteLine("8. Statistiques");
+                Console.WriteLine("9. Retour");
                 Console.Write("Choix : ");
-                string choix = Console.ReadLine();
-                switch (choix)
+                switch (Console.ReadLine().Trim())
                 {
-                    case "1":
-                        CalculerDijkstra();
-                        break;
-                    case "2":
-                        CalculerBellmanFord();
-                        break;
-                    case "3":
-                        CalculerFloydWarshall();
-                        break;
-                    case "4":
-                        VisualiserCheminGraphiqueAdmin();
-                        break;
-                    case "5":
-                        AfficherClassementCuisiniers();
-                        break;
-                    case "6":
-                        exitAdmin = true;
-                        break;
-                    default:
-                        Console.WriteLine("Choix invalide.");
-                        break;
+                    case "1": CalculerDijkstra();            break;
+                    case "2": CalculerBellmanFord();         break;
+                    case "3": CalculerFloydWarshall();       break;
+                    case "4": VisualiserCheminGraphiqueAdmin(); break;
+                    case "5": AfficherClassementCuisiniers();   break;
+                    case "6": PerformGraphColoring();            break; //// existant : stations
+                    case "7": ColorerGrapheClientsCuisiniers();  break; //// nouveau
+                    case "8": ModuleStatistiques();               break;
+                    case "9": exit = true;                        break;
+                    default:  Console.WriteLine("Choix invalide."); break;
+                
                 }
             }
+        }
+
+        static void ModifierCompte()
+        {
+            Console.WriteLine("\n=== Modifier mon compte ===");
+            Console.Write($"Nom    (actuel: {utilisateurConnecte.Nom})    : ");
+            var nom = Console.ReadLine().Trim();
+            Console.Write($"Prénom (actuel: {utilisateurConnecte.Prenom}) : ");
+            var prenom = Console.ReadLine().Trim();
+            Console.Write($"Téléphone (actuel: {utilisateurConnecte.MetroProche}) : ");
+            var tel = Console.ReadLine().Trim();
+
+            if (utilisateurConnecte.Type == "Client" || utilisateurConnecte.Type == "Both")
+                dbManager.MettreAJourClient(utilisateurConnecte.ID, nom, prenom, tel);
+
+            if (utilisateurConnecte.Type == "Cuisinier" || utilisateurConnecte.Type == "Both")
+                dbManager.MettreAJourCuisinier(utilisateurConnecte.ID, nom, prenom, tel);
+
+            if (!string.IsNullOrEmpty(nom))    utilisateurConnecte.Nom = nom;
+            if (!string.IsNullOrEmpty(prenom)) utilisateurConnecte.Prenom = prenom;
+            if (!string.IsNullOrEmpty(tel))    utilisateurConnecte.MetroProche = tel;
+
+            Console.WriteLine("Compte mis à jour avec succès.");
+        }
+
+        static void SupprimerCompte()
+        {
+            Console.Write("Confirmez-vous la suppression de votre compte ? (O/N) : ");
+            if (Console.ReadLine().Trim().ToUpper() == "O")
+            {
+                if (utilisateurConnecte.Type == "Client" || utilisateurConnecte.Type == "Both")
+                    dbManager.SupprimerClient(utilisateurConnecte.ID);
+                if (utilisateurConnecte.Type == "Cuisinier" || utilisateurConnecte.Type == "Both")
+                    dbManager.SupprimerCuisinier(utilisateurConnecte.ID);
+
+                Console.WriteLine("Compte supprimé.");
+                utilisateurConnecte = null;
+            }
+            else
+            {
+                Console.WriteLine("Suppression annulée.");
+            }
+        }
+
+        static void ModuleStatistiques()
+        {
+            Console.WriteLine("\n=== Module Statistiques ===");
+            Console.WriteLine("1. Nombre de livraisons par cuisinier");
+            Console.WriteLine("2. Commandes par période");
+            Console.WriteLine("3. Moyenne des montants des commandes");
+            Console.WriteLine("4. Moyenne des commandes par client");
+            Console.WriteLine("5. Commandes par nationalité et période");
+            Console.WriteLine("6. Retour");
+            Console.Write("Choix : ");
+            switch (Console.ReadLine().Trim())
+            {
+                case "1": Stat_LivraisonsParCuisinier();      break;
+                case "2": Stat_CommandesParPeriode();         break;
+                case "3": Stat_MoyenneMontantsCommandes();    break;
+                case "4": Stat_MoyenneCommandesParClient();   break;
+                case "5": Stat_CommandesParClientEtNat();     break;
+                case "6": return;
+                default: Console.WriteLine("Choix invalide."); break;
+            }
+        }
+
+        static void Stat_LivraisonsParCuisinier()
+        {
+            Console.WriteLine("\n--- Nombre de livraisons par cuisinier ---");
+            foreach (var kv in commandeParCuisinier)
+            {
+                int cid = kv.Key;
+                int count = kv.Value.Count(c => c.Etat.Equals("Livrée", StringComparison.OrdinalIgnoreCase));
+                Console.WriteLine($"Cuisinier {cid} : {count} livraison(s) livrée(s)");
+            }
+        }
+
+        static void Stat_CommandesParPeriode()
+        {
+            Console.Write("Date début (dd/MM/yyyy) : ");
+            var d1 = DateTime.ParseExact(Console.ReadLine().Trim(), "dd/MM/yyyy", CultureInfo.InvariantCulture);
+            Console.Write("Date fin   (dd/MM/yyyy) : ");
+            var d2 = DateTime.ParseExact(Console.ReadLine().Trim(), "dd/MM/yyyy", CultureInfo.InvariantCulture);
+            var cmds = listeCommandesClient
+                .Where(c => c.DateLivraison.Date >= d1.Date && c.DateLivraison.Date <= d2.Date)
+                .ToList();
+            Console.WriteLine($"\nCommandes entre {d1:dd/MM/yyyy} et {d2:dd/MM/yyyy} : {cmds.Count}");
+            foreach (var c in cmds)
+                Console.WriteLine($"#{c.ID} {c.Plat}×{c.Quantite} Montant:{c.MontantTotal:C} Station:{c.AdresseLivraison}");
+        }
+
+        static void Stat_MoyenneMontantsCommandes()
+        {
+            if (!listeCommandesClient.Any())
+            {
+                Console.WriteLine("Aucune commande.");
+                return;
+            }
+            var avg = listeCommandesClient.Average(c => (double)c.MontantTotal);
+            Console.WriteLine($"\nMoyenne des montants : {avg:C2}");
+        }
+
+        static void Stat_MoyenneCommandesParClient()
+        {
+            var groups = listeCommandesClient.GroupBy(c => c.AdresseLivraison);
+            var avg = groups.Any() ? groups.Average(g => g.Count()) : 0;
+            Console.WriteLine($"\nMoyenne des commandes par client (station) : {avg:F2}");
+        }
+
+        static void Stat_CommandesParClientEtNat()
+        {
+            Console.Write("Nationalité cuisine : ");
+            var nat = Console.ReadLine().Trim();
+            Console.Write("Date début (dd/MM/yyyy) : ");
+            var d1 = DateTime.ParseExact(Console.ReadLine().Trim(), "dd/MM/yyyy", CultureInfo.InvariantCulture);
+            Console.Write("Date fin   (dd/MM/yyyy) : ");
+            var d2 = DateTime.ParseExact(Console.ReadLine().Trim(), "dd/MM/yyyy", CultureInfo.InvariantCulture);
+            var cmds = listeCommandesClient
+                .Where(c =>
+                    c.DateLivraison.Date >= d1.Date &&
+                    c.DateLivraison.Date <= d2.Date &&
+                    listePlats.Any(p => p.Nom == c.Plat && p.NationaliteCuisine.Equals(nat, StringComparison.OrdinalIgnoreCase)))
+                .ToList();
+            Console.WriteLine($"\nCommandes ({nat}) du {d1:dd/MM/yyyy} au {d2:dd/MM/yyyy} : {cmds.Count}");
+            foreach (var c in cmds)
+                Console.WriteLine($"#{c.ID} {c.Plat}×{c.Quantite} Montant:{c.MontantTotal:C}");
         }
 
         static void AfficherPlatsDisponibles()
         {
-            Console.WriteLine("\n=== Liste des plats disponibles ===");
-            if (listePlats.Count == 0)
-            {
-                Console.WriteLine("Aucun plat n'a encore été partagé.");
-            }
+            Console.WriteLine("\n--- Plats disponibles ---");
+            if (!listePlats.Any())
+                Console.WriteLine("Aucun plat.");
             else
-            {
-                foreach (var plat in listePlats)
-                {
-                    Console.WriteLine($"ID: {plat.ID} - {plat.Nom} ({plat.Type}) - Prix: {plat.PrixParPersonne:C}");
-                }
-            }
+                listePlats.ForEach(p => Console.WriteLine($"ID {p.ID}: {p.Nom} ({p.Type}) — {p.PrixParPersonne:C}"));
         }
 
-        // Lorsqu'un client commande, la station du cuisinier est prise depuis le plat partagé
         static void CommanderPlat()
         {
             AfficherPlatsDisponibles();
-            if (listePlats.Count == 0)
-                return;
-            Console.Write("Entrez l'ID du plat à commander : ");
-            int idPlat;
-            if (!int.TryParse(Console.ReadLine(), out idPlat))
+            if (!listePlats.Any()) return;
+
+            Console.Write("ID du plat : ");
+            if (!int.TryParse(Console.ReadLine(), out int idPlat) || listePlats.All(p => p.ID != idPlat))
             {
-                Console.WriteLine("ID invalide.");
-                return;
+                Console.WriteLine("ID invalide."); return;
             }
-            var plat = listePlats.Find(p => p.ID == idPlat);
-            if (plat == null)
-            {
-                Console.WriteLine("Plat non trouvé.");
-                return;
-            }
+            var plat = listePlats.First(p => p.ID == idPlat);
+
             Console.Write("Quantité : ");
-            int quantite;
-            while (!int.TryParse(Console.ReadLine(), out quantite))
+            if (!int.TryParse(Console.ReadLine(), out int quantite))
             {
-                Console.Write("Veuillez entrer une quantité valide : ");
+                Console.WriteLine("Quantité invalide."); return;
             }
-            decimal montantTotal = plat.PrixParPersonne * quantite;
-            Console.WriteLine($"Montant total de la commande : {montantTotal:C}");
 
-            // Le client indique sa station de métro
-            Console.Write("Entrez votre station de métro : ");
+            Console.Write("Votre station métro : ");
             string stationClient = Console.ReadLine().Trim();
-            var noeudClient = metroGraphe.TrouverNoeud(stationClient);
-            var noeudCuisinier = metroGraphe.TrouverNoeud(plat.StationCuisinier);
-            if (noeudClient == null || noeudCuisinier == null)
+            var nc = metroGraphe.TrouverNoeud(stationClient);
+            var nu = metroGraphe.TrouverNoeud(plat.StationCuisinier);
+            if (nc == null || nu == null)
             {
-                Console.WriteLine("Erreur : station(s) introuvable(s) dans le graphe.");
-                return;
+                Console.WriteLine("Station introuvable."); return;
             }
-            var (distances, predecesseurs) = metroGraphe.Dijkstra(noeudCuisinier);
-            double tempsTrajet = distances[noeudClient];
-            if (double.IsInfinity(tempsTrajet))
-            {
-                Console.WriteLine("Aucun chemin trouvé entre les stations indiquées.");
-                return;
-            }
-            else
-            {
-                var chemin = ReconstruireChemin(noeudCuisinier, noeudClient, predecesseurs);
-                double distanceParcourue = CalculerDistanceChemin(chemin, stationCoordinates);
-                Console.WriteLine("=== Détails de la commande ===");
-                Console.WriteLine($"Temps de trajet : {tempsTrajet}");
-                Console.WriteLine("Chemin parcouru : " + string.Join(" -> ", chemin));
-                Console.WriteLine($"Distance totale parcourue : {distanceParcourue:F2} km");
 
-                // Enregistrement de la commande avec état initial "En attente"
-                Commande commande = new Commande
-                {
-                    ID = orderCounter++,
-                    Plat = plat.Nom,
-                    Quantite = quantite,
-                    DateLivraison = DateTime.Now,
-                    AdresseLivraison = stationClient,
-                    TempsTrajet = tempsTrajet,
-                    Chemin = chemin,
-                    Distance = distanceParcourue,
-                    Etat = "En attente"
-                };
-                listeCommandesClient.Add(commande);
-                if (!commandeParCuisinier.ContainsKey(plat.IDCuisinier))
-                    commandeParCuisinier[plat.IDCuisinier] = new List<Commande>();
-                commandeParCuisinier[plat.IDCuisinier].Add(commande);
-
-                Console.WriteLine("Commande enregistrée.");
-                Console.WriteLine("Appuyez sur une touche pour visualiser le trajet.");
-                Console.ReadKey();
-                Application.EnableVisualStyles();
-                Application.SetCompatibleTextRenderingDefault(false);
-                Application.Run(new GraphForm(chemin, stationCoordinates));
+            var (dist, pred) = metroGraphe.Dijkstra(nu);
+            double temps = dist[nc];
+            if (double.IsInfinity(temps))
+            {
+                Console.WriteLine("Pas de chemin."); return;
             }
+            var chemin = ReconstruireChemin(nu, nc, pred);
+            double distance = CalculerDistanceChemin(chemin, stationCoordinates);
+            decimal montantTotal = plat.PrixParPersonne * quantite;
+
+            Console.WriteLine($"\nTemps trajet : {temps}");
+            Console.WriteLine($"Distance totale : {distance:F2} km");
+            Console.WriteLine($"Montant total : {montantTotal:C}");
+            Console.WriteLine("Trajet : " + string.Join(" → ", chemin));
+
+            var cmd = new Commande
+            {
+                ID = orderCounter++,
+                Plat = plat.Nom,
+                Quantite = quantite,
+                DateLivraison = DateTime.Now,
+                AdresseLivraison = stationClient,
+                TempsTrajet = temps,
+                Chemin = chemin,
+                Distance = distance,
+                Etat = "En attente",
+                MontantTotal = montantTotal
+            };
+            listeCommandesClient.Add(cmd);
+            if (!commandeParCuisinier.ContainsKey(plat.IDCuisinier))
+                commandeParCuisinier[plat.IDCuisinier] = new List<Commande>();
+            commandeParCuisinier[plat.IDCuisinier].Add(cmd);
+
+            Console.WriteLine("\nAppuyez sur une touche pour visualiser le trajet...");
+            Console.ReadKey();
+            Application.Run(new GraphForm(chemin, stationCoordinates));
         }
 
         static void PartagerPlat()
         {
-            Console.WriteLine("\n=== Partager un nouveau plat ===");
-            Console.Write("Nom du plat : ");
-            string nomPlat = Console.ReadLine().Trim();
-            Console.Write("Type de plat (Entrée / Plat principal / Dessert) : ");
-            string typePlat = Console.ReadLine().Trim();
+            Console.WriteLine("\n--- Partager un plat ---");
+            Console.Write("Nom : ");
+            var nom = Console.ReadLine().Trim();
+            Console.Write("Type (Entrée/Plat principal/Dessert) : ");
+            var type = Console.ReadLine().Trim();
             Console.Write("Pour combien de personnes ? ");
-            int nbPortions;
-            while (!int.TryParse(Console.ReadLine(), out nbPortions))
-            {
-                Console.Write("Veuillez entrer un nombre valide : ");
-            }
-            Console.Write("Date de fabrication (jj/mm/aaaa) : ");
-            DateTime dateFabrication;
-            if (!DateTime.TryParseExact(Console.ReadLine().Trim(), "dd/MM/yyyy", CultureInfo.InvariantCulture, DateTimeStyles.None, out dateFabrication))
-            {
-                Console.WriteLine("Date invalide.");
-                return;
-            }
-            Console.Write("Date de péremption (jj/mm/aaaa) : ");
-            DateTime datePeremption;
-            if (!DateTime.TryParseExact(Console.ReadLine().Trim(), "dd/MM/yyyy", CultureInfo.InvariantCulture, DateTimeStyles.None, out datePeremption))
-            {
-                Console.WriteLine("Date invalide.");
-                return;
-            }
+            var nb = int.Parse(Console.ReadLine().Trim());
+            Console.Write("Date fabrication (dd/MM/yyyy) : ");
+            var df = DateTime.ParseExact(Console.ReadLine().Trim(), "dd/MM/yyyy", CultureInfo.InvariantCulture);
+            Console.Write("Date péremption    (dd/MM/yyyy) : ");
+            var dp = DateTime.ParseExact(Console.ReadLine().Trim(), "dd/MM/yyyy", CultureInfo.InvariantCulture);
             Console.Write("Prix par personne : ");
-            decimal prix;
-            while (!decimal.TryParse(Console.ReadLine(), out prix))
-            {
-                Console.Write("Veuillez entrer un prix valide : ");
-            }
-            Console.Write("Nationalité de la cuisine (ex. : chinoise, mexicaine) : ");
-            string nationalite = Console.ReadLine().Trim();
-            Console.Write("Régime alimentaire (végétarien, sans gluten, halal, etc.) : ");
-            string regime = Console.ReadLine().Trim();
-            Console.Write("Ingrédients principaux : ");
-            string ingredients = Console.ReadLine().Trim();
+            var pr = decimal.Parse(Console.ReadLine().Trim());
+            Console.Write("Nationalité cuisine : ");
+            var nat = Console.ReadLine().Trim();
+            Console.Write("Régime alimentaire  : ");
+            var reg = Console.ReadLine().Trim();
+            Console.Write("Ingrédients        : ");
+            var ing = Console.ReadLine().Trim();
 
-            int idCuisinier = utilisateurConnecte.ID;
-            dbManager.InsererPlat(nomPlat, typePlat, nbPortions, dateFabrication, datePeremption, prix, nationalite, regime, ingredients, idCuisinier);
+            int idc = utilisateurConnecte.ID;
+            dbManager.InsererPlat(nom, type, nb, df, dp, pr, nat, reg, ing, idc);
 
-            int newID = (listePlats.Count > 0) ? listePlats[listePlats.Count - 1].ID + 1 : 1;
+            int newID = listePlats.Any() ? listePlats.Max(p => p.ID) + 1 : 1;
             listePlats.Add(new Plat
             {
                 ID = newID,
-                Nom = nomPlat,
-                Type = typePlat,
-                NbPortions = nbPortions,
-                DateFabrication = dateFabrication,
-                DatePeremption = datePeremption,
-                PrixParPersonne = prix,
-                NationaliteCuisine = nationalite,
-                RegimeAlimentaire = regime,
-                Ingredients = ingredients,
-                IDCuisinier = idCuisinier,
+                Nom = nom,
+                Type = type,
+                NbPortions = nb,
+                DateFabrication = df,
+                DatePeremption = dp,
+                PrixParPersonne = pr,
+                NationaliteCuisine = nat,
+                RegimeAlimentaire = reg,
+                Ingredients = ing,
+                IDCuisinier = idc,
                 StationCuisinier = utilisateurConnecte.MetroProche
             });
             Console.WriteLine("Plat partagé avec succès !");
@@ -452,307 +486,254 @@ namespace GraphProject
 
         static void VoirMesPlatsPartages()
         {
-            Console.WriteLine("\n=== Mes plats partagés ===");
-            int idCuisinier = utilisateurConnecte.ID;
-            var mesPlats = listePlats.FindAll(p => p.IDCuisinier == idCuisinier);
-            if (mesPlats.Count == 0)
-            {
+            Console.WriteLine("\n--- Mes plats partagés ---");
+            var mes = listePlats.Where(p => p.IDCuisinier == utilisateurConnecte.ID).ToList();
+            if (!mes.Any())
                 Console.WriteLine("Aucun plat partagé.");
-            }
             else
-            {
-                foreach (var plat in mesPlats)
-                {
-                    Console.WriteLine($"ID: {plat.ID} - {plat.Nom} ({plat.Type}) - Prix: {plat.PrixParPersonne:C}");
-                }
-            }
+                mes.ForEach(p => Console.WriteLine($"ID {p.ID}: {p.Nom} — {p.PrixParPersonne:C}"));
         }
 
         static void VoirMesCommandesClient()
         {
-            Console.WriteLine("\n=== Mes commandes ===");
-            if (listeCommandesClient.Count == 0)
-            {
-                Console.WriteLine("Aucune commande enregistrée.");
-            }
+            Console.WriteLine("\n--- Mes commandes ---");
+            if (!listeCommandesClient.Any())
+                Console.WriteLine("Aucune commande.");
             else
-            {
-                foreach (var commande in listeCommandesClient)
-                {
-                    Console.WriteLine($"Commande #{commande.ID}: Plat: {commande.Plat}, Quantité: {commande.Quantite}, Etat: {commande.Etat}, Temps trajet: {commande.TempsTrajet}, Distance: {commande.Distance:F2} km");
-                }
-            }
+                listeCommandesClient.ForEach(c =>
+                    Console.WriteLine($"#{c.ID} {c.Plat}×{c.Quantite} — État:{c.Etat} — Montant:{c.MontantTotal:C}"));
         }
 
         static void VoirCommandesCuisinier()
         {
-            Console.WriteLine("\n=== Commandes reçues ===");
-            int idCuisinier = utilisateurConnecte.ID;
-            if (!commandeParCuisinier.ContainsKey(idCuisinier) || commandeParCuisinier[idCuisinier].Count == 0)
+            Console.WriteLine("\n--- Commandes reçues ---");
+            if (!commandeParCuisinier.TryGetValue(utilisateurConnecte.ID, out var list) || !list.Any())
             {
                 Console.WriteLine("Aucune commande reçue.");
+                return;
             }
-            else
+            list.ForEach(c => Console.WriteLine($"#{c.ID} {c.Plat}×{c.Quantite} — État:{c.Etat} — Montant:{c.MontantTotal:C}"));
+            Console.Write("\nVisualiser trajet d'une commande ? (O/N) ");
+            if (Console.ReadLine().Trim().ToUpper() == "O")
             {
-                foreach (var commande in commandeParCuisinier[idCuisinier])
+                Console.Write("ID commande : ");
+                if (int.TryParse(Console.ReadLine(), out int id) && list.Any(c => c.ID == id))
                 {
-                    Console.WriteLine($"Commande #{commande.ID}: Plat: {commande.Plat}, Quantité: {commande.Quantite}, Etat: {commande.Etat}, Temps trajet: {commande.TempsTrajet}, Distance: {commande.Distance:F2} km");
-                }
-                Console.WriteLine("Souhaitez-vous visualiser le trajet d'une commande ? (O/N)");
-                string rep = Console.ReadLine().Trim().ToUpper();
-                if (rep == "O")
-                {
-                    Console.Write("Entrez l'ID de la commande : ");
-                    int idCommande;
-                    if (int.TryParse(Console.ReadLine(), out idCommande))
-                    {
-                        var commande = commandeParCuisinier[idCuisinier].Find(c => c.ID == idCommande);
-                        if (commande != null)
-                        {
-                            Application.EnableVisualStyles();
-                            Application.SetCompatibleTextRenderingDefault(false);
-                            Application.Run(new GraphForm(commande.Chemin, stationCoordinates));
-                        }
-                        else
-                        {
-                            Console.WriteLine("Commande non trouvée.");
-                        }
-                    }
+                    var cmd = list.First(c => c.ID == id);
+                    Application.Run(new GraphForm(cmd.Chemin, stationCoordinates));
                 }
             }
         }
 
-        // Méthode pour que le cuisinier mette à jour l'état d'une commande
         static void MettreAJourEtatCommande()
         {
-            Console.WriteLine("\n=== Mise à jour de l'état d'une commande ===");
-            int idCuisinier = utilisateurConnecte.ID;
-            if (!commandeParCuisinier.ContainsKey(idCuisinier) || commandeParCuisinier[idCuisinier].Count == 0)
+            Console.WriteLine("\n--- Mettre à jour état ---");
+            if (!commandeParCuisinier.TryGetValue(utilisateurConnecte.ID, out var list) || !list.Any())
             {
                 Console.WriteLine("Aucune commande reçue.");
                 return;
             }
-            foreach (var commande in commandeParCuisinier[idCuisinier])
+            list.ForEach(c => Console.WriteLine($"#{c.ID} — État actuel : {c.Etat}"));
+            Console.Write("ID à modifier : ");
+            if (int.TryParse(Console.ReadLine(), out int id) && list.Any(c => c.ID == id))
             {
-                Console.WriteLine($"Commande #{commande.ID}: Plat: {commande.Plat}, Quantité: {commande.Quantite}, Etat actuel: {commande.Etat}");
+                var cmd = list.First(c => c.ID == id);
+                Console.Write("Nouvel état : ");
+                cmd.Etat = Console.ReadLine().Trim();
+                Console.WriteLine("État mis à jour.");
             }
-            Console.Write("Entrez l'ID de la commande à mettre à jour : ");
-            int idCmd;
-            if (!int.TryParse(Console.ReadLine(), out idCmd))
-            {
-                Console.WriteLine("ID invalide.");
-                return;
-            }
-            var cmdToUpdate = commandeParCuisinier[idCuisinier].Find(c => c.ID == idCmd);
-            if (cmdToUpdate == null)
-            {
-                Console.WriteLine("Commande non trouvée.");
-                return;
-            }
-            Console.Write("Nouvel état (ex. 'En cours de livraison', 'Livrée') : ");
-            string nouvelEtat = Console.ReadLine().Trim();
-            cmdToUpdate.Etat = nouvelEtat;
-            Console.WriteLine("L'état de la commande a été mis à jour.");
         }
 
-        // Fonctions Admin (démonstration des algorithmes de plus court chemin)
         static void CalculerDijkstra()
         {
-            Console.Write("Station de départ : ");
-            string depart = Console.ReadLine();
-            Console.Write("Station d'arrivée : ");
-            string arrivee = Console.ReadLine();
-            var noeudDepart = metroGraphe.TrouverNoeud(depart);
-            var noeudArrivee = metroGraphe.TrouverNoeud(arrivee);
-            if (noeudDepart == null || noeudArrivee == null)
+            Console.Write("Station départ : ");
+            var dep = metroGraphe.TrouverNoeud(Console.ReadLine().Trim());
+            Console.Write("Station arrivée : ");
+            var arr = metroGraphe.TrouverNoeud(Console.ReadLine().Trim());
+            if (dep == null || arr == null)
             {
-                Console.WriteLine("Station(s) inconnue(s).");
+                Console.WriteLine("Station inconnue.");
                 return;
             }
-            var (distances, predecesseurs) = metroGraphe.Dijkstra(noeudDepart);
-            double tempsTrajet = distances[noeudArrivee];
-            if (double.IsInfinity(tempsTrajet))
+            var (dist, pred) = metroGraphe.Dijkstra(dep);
+            double t = dist[arr];
+            if (double.IsInfinity(t))
             {
-                Console.WriteLine("Aucun chemin trouvé.");
+                Console.WriteLine("Pas de chemin.");
+                return;
             }
-            else
-            {
-                var chemin = ReconstruireChemin(noeudDepart, noeudArrivee, predecesseurs);
-                Console.WriteLine($"Temps de trajet (Dijkstra) : {tempsTrajet}");
-                Console.WriteLine("Chemin : " + string.Join(" -> ", chemin));
-            }
+            var ch = ReconstruireChemin(dep, arr, pred);
+            Console.WriteLine($"\nDijkstra — Temps : {t} — Chemin : {string.Join(" → ", ch)}");
         }
 
         static void CalculerBellmanFord()
         {
-            Console.Write("Station de départ : ");
-            string depart = Console.ReadLine();
-            Console.Write("Station d'arrivée : ");
-            string arrivee = Console.ReadLine();
-            var noeudDepart = metroGraphe.TrouverNoeud(depart);
-            var noeudArrivee = metroGraphe.TrouverNoeud(arrivee);
-            if (noeudDepart == null || noeudArrivee == null)
+            Console.Write("Station départ : ");
+            var dep = metroGraphe.TrouverNoeud(Console.ReadLine().Trim());
+            Console.Write("Station arrivée : ");
+            var arr = metroGraphe.TrouverNoeud(Console.ReadLine().Trim());
+            if (dep == null || arr == null)
             {
-                Console.WriteLine("Station(s) inconnue(s).");
+                Console.WriteLine("Station inconnue.");
                 return;
             }
-            var (distances, predecesseurs) = metroGraphe.BellmanFord(noeudDepart);
-            double tempsTrajet = distances[noeudArrivee];
-            if (double.IsInfinity(tempsTrajet))
+            var (dist, pred) = metroGraphe.BellmanFord(dep);
+            double t = dist[arr];
+            if (double.IsInfinity(t))
             {
-                Console.WriteLine("Aucun chemin trouvé.");
+                Console.WriteLine("Pas de chemin.");
+                return;
             }
-            else
-            {
-                var chemin = ReconstruireChemin(noeudDepart, noeudArrivee, predecesseurs);
-                Console.WriteLine($"Temps de trajet (Bellman-Ford) : {tempsTrajet}");
-                Console.WriteLine("Chemin : " + string.Join(" -> ", chemin));
-            }
+            var ch = ReconstruireChemin(dep, arr, pred);
+            Console.WriteLine($"\nBellman-Ford — Temps : {t} — Chemin : {string.Join(" → ", ch)}");
         }
 
         static void CalculerFloydWarshall()
         {
             var (dist, next) = metroGraphe.FloydWarshall();
-            Console.WriteLine("=== Matrice des temps de trajet ===");
-            foreach (var i in metroGraphe.Noeuds)
+            Console.Write("Station départ : ");
+            var dep = metroGraphe.TrouverNoeud(Console.ReadLine().Trim());
+            Console.Write("Station arrivée : ");
+            var arr = metroGraphe.TrouverNoeud(Console.ReadLine().Trim());
+            if (dep == null || arr == null)
             {
-                foreach (var j in metroGraphe.Noeuds)
-                {
-                    double d = dist[(i, j)];
-                    if (double.IsInfinity(d))
-                        Console.WriteLine($"Pas de chemin de {i.Valeur} à {j.Valeur}");
-                    else
-                        Console.WriteLine($"Temps de trajet de {i.Valeur} à {j.Valeur} = {d}");
-                }
-            }
-            Console.Write("Station de départ pour reconstruction : ");
-            string dep = Console.ReadLine();
-            Console.Write("Station d'arrivée pour reconstruction : ");
-            string arr = Console.ReadLine();
-            var noeudDep = metroGraphe.TrouverNoeud(dep);
-            var noeudArr = metroGraphe.TrouverNoeud(arr);
-            if (noeudDep == null || noeudArr == null)
-            {
-                Console.WriteLine("Station(s) inconnue(s).");
+                Console.WriteLine("Station inconnue.");
                 return;
             }
-            var cheminReconstitue = metroGraphe.ReconstituerCheminFloyd(noeudDep, noeudArr, next);
-            if (cheminReconstitue.Count == 0)
+            var ch = metroGraphe.ReconstituerCheminFloyd(dep, arr, next);
+            double t = dist[(dep, arr)];
+            if (!ch.Any() || double.IsInfinity(t))
                 Console.WriteLine("Aucun chemin trouvé.");
             else
-            {
-                Console.WriteLine("Chemin (Floyd-Warshall) : " + string.Join(" -> ", cheminReconstitue.ConvertAll(n => n.Valeur)));
-            }
+                Console.WriteLine($"\nFloyd-Warshall — Temps : {t} — Chemin : {string.Join(" → ", ch.Select(n => n.Valeur))}");
         }
 
         static void VisualiserCheminGraphiqueAdmin()
         {
-            Console.Write("Station de départ : ");
-            string depart = Console.ReadLine();
-            Console.Write("Station d'arrivée : ");
-            string arrivee = Console.ReadLine();
-            var noeudDepart = metroGraphe.TrouverNoeud(depart);
-            var noeudArrivee = metroGraphe.TrouverNoeud(arrivee);
-            if (noeudDepart == null || noeudArrivee == null)
+            Console.Write("Station départ : ");
+            var dep = metroGraphe.TrouverNoeud(Console.ReadLine().Trim());
+            Console.Write("Station arrivée : ");
+            var arr = metroGraphe.TrouverNoeud(Console.ReadLine().Trim());
+            if (dep == null || arr == null)
             {
-                Console.WriteLine("Station(s) inconnue(s).");
+                Console.WriteLine("Station inconnue.");
                 return;
             }
-            var (distances, predecesseurs) = metroGraphe.Dijkstra(noeudDepart);
-            double tempsTrajet = distances[noeudArrivee];
-            if (double.IsInfinity(tempsTrajet))
+            var (dist, pred) = metroGraphe.Dijkstra(dep);
+            double t = dist[arr];
+            if (double.IsInfinity(t))
             {
-                Console.WriteLine("Aucun chemin trouvé.");
+                Console.WriteLine("Pas de chemin.");
+                return;
             }
-            else
-            {
-                var chemin = ReconstruireChemin(noeudDepart, noeudArrivee, predecesseurs);
-                Console.WriteLine($"Temps de trajet : {tempsTrajet}");
-                Console.WriteLine("Chemin : " + string.Join(" -> ", chemin));
-                Application.EnableVisualStyles();
-                Application.SetCompatibleTextRenderingDefault(false);
-                Application.Run(new GraphForm(chemin, stationCoordinates));
-            }
+            var ch = ReconstruireChemin(dep, arr, pred);
+            Console.WriteLine($"\nVisuel — Temps : {t} — Chemin : {string.Join(" → ", ch)}");
+            Application.Run(new GraphForm(ch, stationCoordinates));
         }
 
-        // Affichage du classement des cuisiniers (basé sur le nombre de commandes dont l'état est "Livrée")
         static void AfficherClassementCuisiniers()
         {
-            Console.WriteLine("\n=== Classement des cuisiniers ===");
-            Dictionary<int, int> classement = new Dictionary<int, int>();
-            foreach (var kvp in commandeParCuisinier)
-            {
-                int idCuisinier = kvp.Key;
-                int deliveredCount = 0;
-                foreach (var commande in kvp.Value)
-                {
-                    if (commande.Etat.Equals("Livrée", StringComparison.OrdinalIgnoreCase))
-                        deliveredCount++;
-                }
-                classement[idCuisinier] = deliveredCount;
-            }
-            // Tri décroissant par nombre de commandes livrées
-            foreach (var item in SortedByValueDescending(classement))
-            {
-                Console.WriteLine($"Cuisinier ID {item.Key} : {item.Value} commande(s) livrée(s)");
-            }
+            Console.WriteLine("\n--- Classement des cuisiniers (Livrées) ---");
+            var classement = commandeParCuisinier
+                .ToDictionary(kv => kv.Key,
+                              kv => kv.Value.Count(c => c.Etat.Equals("Livrée", StringComparison.OrdinalIgnoreCase)))
+                .OrderByDescending(kv => kv.Value);
+            foreach (var kv in classement)
+                Console.WriteLine($"Cuisinier {kv.Key} → {kv.Value} livraison(s)");
         }
 
-        // Méthode utilitaire pour trier un dictionnaire par valeur en ordre décroissant
-        static IEnumerable<KeyValuePair<int, int>> SortedByValueDescending(Dictionary<int, int> dict)
+        static void PerformGraphColoring()
         {
-            var list = new List<KeyValuePair<int, int>>(dict);
-            list.Sort((pair1, pair2) => pair2.Value.CompareTo(pair1.Value));
-            return list;
+            Console.WriteLine("\n--- Coloration Welsh-Powell ---");
+            var coloring = metroGraphe.WelshPowellColoring();
+            int maxColor = coloring.Values.Max();
+            Console.WriteLine($"Couleurs utilisées : {maxColor}");
+            foreach (var kvp in coloring)
+                Console.WriteLine($"Station {kvp.Key.Valeur} → Couleur {kvp.Value}");
+            var jsonPath = Path.Combine(AppContext.BaseDirectory, "coloring.json");
+            metroGraphe.ExportColoringJson(jsonPath);
+            Console.WriteLine($"JSON exporté : {jsonPath}");
+            var xmlPath = Path.Combine(AppContext.BaseDirectory, "coloring.xml");
+            metroGraphe.ExportColoringXml(xmlPath);
+            Console.WriteLine($"XML exporté  : {xmlPath}");
         }
 
-        static List<string> ReconstruireChemin(Noeud<string> depart, Noeud<string> arrivee, Dictionary<Noeud<string>, Noeud<string>> predecesseurs)
+        static void ColorerGrapheClientsCuisiniers()
         {
-            List<string> chemin = new List<string>();
-            var courant = arrivee;
-            while (courant != null && !courant.Valeur.Equals(depart.Valeur))
+            //// 1) On récupère les relations
+            var relations = dbManager.ChargerRelationsClientCuisinier();
+
+            //// 2) On crée un nouveau graphe générique orienté = false
+            var g = new Graphe<string>(oriente: false);
+
+            //// 3) On ajoute tous les clients et cuisiniers en tant que nœuds,
+            ////    en les préfixant pour distinguer les deux ensembles
+            var clients = relations.Select(r => r.clientId).Distinct();
+            var cuisiniers = relations.Select(r => r.cuisinierId).Distinct();
+            foreach (var cid in clients)    g.AjouterNoeud("C:" + cid);
+            foreach (var pid in cuisiniers) g.AjouterNoeud("U:" + pid);
+
+            //// 4) On ajoute une arête pour chaque relation
+            foreach (var (cid, pid) in relations)
+                g.AjouterArc("C:" + cid, "U:" + pid, 1);  //// poids 1
+
+            //// 5) On colore avec Welsh-Powell
+            var coloring = g.WelshPowellColoring();
+
+            //// 6) On affiche le résultat à la console
+            Console.WriteLine("Coloration du graphe client↔cuisinier :");
+            foreach (var kv in coloring)
+                Console.WriteLine($"{kv.Key} → couleur {kv.Value}");
+
+            //// 7) On exporte en JSON / XML
+            var jsonPath = Path.Combine(AppContext.BaseDirectory, "coloring_users.json");
+            g.ExportColoringJson(jsonPath);
+            Console.WriteLine($"JSON exporté : {jsonPath}");
+            var xmlPath  = Path.Combine(AppContext.BaseDirectory, "coloring_users.xml");
+            g.ExportColoringXml(xmlPath);
+            Console.WriteLine($"XML exporté  : {xmlPath}");
+        }
+
+
+        static List<string> ReconstruireChemin(Noeud<string> start, Noeud<string> end, Dictionary<Noeud<string>, Noeud<string>> pred)
+        {
+            var path = new List<string>();
+            var cur = end;
+            while (cur != null && !cur.Equals(start))
             {
-                chemin.Insert(0, courant.Valeur);
-                courant = predecesseurs[courant];
+                path.Insert(0, cur.Valeur);
+                cur = pred[cur];
             }
-            if (courant == null)
-                return new List<string>(); // aucun chemin trouvé
-            chemin.Insert(0, depart.Valeur);
-            return chemin;
+            if (cur != null)
+                path.Insert(0, start.Valeur);
+            return path;
         }
 
         static double CalculerDistanceChemin(List<string> chemin, Dictionary<string, (double Latitude, double Longitude)> coords)
         {
-            double distanceTotale = 0;
+            double total = 0;
             for (int i = 0; i < chemin.Count - 1; i++)
             {
-                string stationA = chemin[i];
-                string stationB = chemin[i + 1];
-                if (coords.TryGetValue(stationA, out var coordA) && coords.TryGetValue(stationB, out var coordB))
-                    distanceTotale += CalculerDistanceHaversine(coordA.Latitude, coordA.Longitude, coordB.Latitude, coordB.Longitude);
+                var a = coords[chemin[i]];
+                var b = coords[chemin[i + 1]];
+                total += CalculerDistanceHaversine(a.Latitude, a.Longitude, b.Latitude, b.Longitude);
             }
-            return distanceTotale;
+            return total;
         }
 
         static double CalculerDistanceHaversine(double lat1, double lon1, double lat2, double lon2)
         {
-            const double R = 6371; // Rayon de la Terre en km
-            double dLat = ToRadians(lat2 - lat1);
-            double dLon = ToRadians(lon2 - lon1);
-            double a = Math.Sin(dLat / 2) * Math.Sin(dLat / 2) +
-                       Math.Cos(ToRadians(lat1)) * Math.Cos(ToRadians(lat2)) *
-                       Math.Sin(dLon / 2) * Math.Sin(dLon / 2);
-            double c = 2 * Math.Atan2(Math.Sqrt(a), Math.Sqrt(1 - a));
-            return R * c;
+            const double R = 6371;
+            double dLat = ToRadians(lat2 - lat1), dLon = ToRadians(lon2 - lon1);
+            double a = Math.Sin(dLat / 2) * Math.Sin(dLat / 2)
+                     + Math.Cos(ToRadians(lat1)) * Math.Cos(ToRadians(lat2))
+                     * Math.Sin(dLon / 2) * Math.Sin(dLon / 2);
+            return R * 2 * Math.Atan2(Math.Sqrt(a), Math.Sqrt(1 - a));
         }
 
-        static double ToRadians(double angle)
-        {
-            return angle * Math.PI / 180;
-        }
+        static double ToRadians(double deg) => deg * Math.PI / 180;
     }
 
-    // Classe représentant un plat partagé (ajout de la propriété StationCuisinier)
     public class Plat
     {
         public int ID { get; set; }
@@ -769,7 +750,6 @@ namespace GraphProject
         public string StationCuisinier { get; set; }
     }
 
-    // Classe représentant une commande (ajout de la propriété Etat)
     public class Commande
     {
         public int ID { get; set; }
@@ -780,15 +760,16 @@ namespace GraphProject
         public double TempsTrajet { get; set; }
         public List<string> Chemin { get; set; }
         public double Distance { get; set; }
-        public string Etat { get; set; } // ex. "En attente", "En cours de livraison", "Livrée"
+        public string Etat { get; set; }
+        public decimal MontantTotal { get; set; }
+        public int IDCuisinier { get; set; }
     }
 
-    // Classe représentant un utilisateur
     public class Utilisateur
     {
         public int ID { get; set; }
-        public string Type { get; set; } // "Client", "Cuisinier" ou "Admin"
-        public string SousType { get; set; } // Pour cuisinier : "Particulier" ou "Entreprise"
+        public string Type { get; set; }
+        public string SousType { get; set; }
         public string Nom { get; set; }
         public string Prenom { get; set; }
         public string Email { get; set; }
