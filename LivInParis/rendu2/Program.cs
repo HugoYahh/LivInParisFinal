@@ -12,6 +12,7 @@ namespace GraphProject
     {
         /// <summary>
         /// Chemin relatif vers l’Excel (Build Action = Content, Copy to Output Directory)
+        /// </summary>
         static string cheminExcel = Path.Combine(AppContext.BaseDirectory, "MetroParis.xlsx");
         static Graphe<string> metroGraphe;
         static Dictionary<string, (double Latitude, double Longitude)> stationCoordinates;
@@ -37,6 +38,7 @@ namespace GraphProject
             listeCommandesClient = dbManager.ObtenirToutesCommandes();
             /// <summary>
             /// Reconstruire commandeParCuisinier EN MEMOIRE à partir de la seule propriété IDCuisinier
+            /// </summary>
             commandeParCuisinier = listeCommandesClient
                 .GroupBy(c => c.IDCuisinier)
                 .ToDictionary(g => g.Key, g => g.ToList());
@@ -660,32 +662,33 @@ namespace GraphProject
 
         static void ColorerGrapheClientsCuisiniers()
         {
-            //// 1) On récupère les relations
+            ///<summary> 1) On récupère les relations</summary>
             var relations = dbManager.ChargerRelationsClientCuisinier();
 
-            //// 2) On crée un nouveau graphe générique orienté = false
+            ///<summary>2) On crée un nouveau graphe générique orienté = false</summary>
             var g = new Graphe<string>(oriente: false);
 
-            //// 3) On ajoute tous les clients et cuisiniers en tant que nœuds,
-            ////    en les préfixant pour distinguer les deux ensembles
+            ///<summary> 3) On ajoute tous les clients et cuisiniers en tant que nœuds,
+            ///   en les préfixant pour distinguer les deux ensembles
+            /// </summary>
             var clients = relations.Select(r => r.clientId).Distinct();
             var cuisiniers = relations.Select(r => r.cuisinierId).Distinct();
             foreach (var cid in clients)    g.AjouterNoeud("C:" + cid);
             foreach (var pid in cuisiniers) g.AjouterNoeud("U:" + pid);
 
-            //// 4) On ajoute une arête pour chaque relation
+            ///<summary> 4) On ajoute une arête pour chaque relation</summary>
             foreach (var (cid, pid) in relations)
-                g.AjouterArc("C:" + cid, "U:" + pid, 1);  //// poids 1
+                g.AjouterArc("C:" + cid, "U:" + pid, 1);  //// <summary>poids 1</summary>
 
-            //// 5) On colore avec Welsh-Powell
+            ///<summary>5) On colore avec Welsh-Powell</summary>
             var coloring = g.WelshPowellColoring();
 
-            //// 6) On affiche le résultat à la console
+            ///<summary> 6) On affiche le résultat à la console</summary>
             Console.WriteLine("Coloration du graphe client↔cuisinier :");
             foreach (var kv in coloring)
                 Console.WriteLine($"{kv.Key} → couleur {kv.Value}");
 
-            //// 7) On exporte en JSON / XML
+            ///<summary>7) On exporte en JSON / XML</summary>
             var jsonPath = Path.Combine(AppContext.BaseDirectory, "coloring_users.json");
             g.ExportColoringJson(jsonPath);
             Console.WriteLine($"JSON exporté : {jsonPath}");

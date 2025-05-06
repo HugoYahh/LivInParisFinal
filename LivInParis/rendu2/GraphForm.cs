@@ -9,7 +9,9 @@ namespace GraphProject
     {
         private List<string> bestPath;
         private Dictionary<string, (double Latitude, double Longitude)> stationCoordinates;
-        // Variables pour recalculer les bornes (min/max) des coordonnées pour adapter à la zone d'affichage.
+        /// <summary>
+        /// Variables pour recalculer les bornes (min/max) des coordonnées pour adapter à la zone d'affichage.
+        /// </summary>
         private double minLat, maxLat, minLon, maxLon;
 
         public GraphForm(List<string> bestPath, Dictionary<string, (double Latitude, double Longitude)> stationCoordinates)
@@ -23,7 +25,9 @@ namespace GraphProject
             CalculerBornes();
         }
 
-        // Calcule les bornes (min/max) de latitude et longitude pour adapter le dessin.
+        /// <summary>
+        /// Calcule les bornes (min/max) de latitude et longitude pour adapter le dessin.
+        /// </summary>
         private void CalculerBornes()
         {
             bool first = true;
@@ -45,17 +49,20 @@ namespace GraphProject
             }
         }
 
-        // Transforme les coordonnées géographiques en coordonnées d'écran (client).
+        /// <summary>
+        /// Transforme les coordonnées géographiques en coordonnées d'écran (client).
+        /// </summary>
+        
         private PointF ConvertirCoordonnees(double lat, double lon)
         {
-            // On laisse une marge de 20 pixels tout autour.
+            ///<summary> On laisse une marge de 20 pixels tout autour.</summary>
             float margin = 20f;
             float width = ClientSize.Width - 2 * margin;
             float height = ClientSize.Height - 2 * margin;
             
-            // Normalisation des valeurs entre 0 et 1.
+            ///<summary> Normalisation des valeurs entre 0 et 1.</summary>
             float x = (float)((lon - minLon) / (maxLon - minLon));
-            float y = (float)((maxLat - lat) / (maxLat - minLat)); // inversion de y pour que le nord soit en haut
+            float y = (float)((maxLat - lat) / (maxLat - minLat)); ///<summary> inversion de y pour que le nord soit en haut</summary>
 
             return new PointF(margin + x * width, margin + y * height);
         }
@@ -66,7 +73,7 @@ namespace GraphProject
             Graphics g = e.Graphics;
             g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
 
-            // Dessiner toutes les stations en bleu.
+            ///<summary> Dessiner toutes les stations en bleu.</summary>
             foreach (var kvp in stationCoordinates)
             {
                 string station = kvp.Key;
@@ -76,7 +83,7 @@ namespace GraphProject
                 g.DrawString(station, this.Font, Brushes.Black, pt.X + 6, pt.Y);
             }
 
-            // Dessiner le meilleur chemin en rouge si la liste est valide.
+            ///<summary> Dessiner le meilleur chemin en rouge si la liste est valide.</summary>
             if (bestPath != null && bestPath.Count >= 2)
             {
                 Pen cheminPen = new Pen(Color.Red, 3);

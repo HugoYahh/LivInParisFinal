@@ -13,13 +13,13 @@ namespace GraphProject
             using (var workbook = new XLWorkbook(cheminExcel))
             {
                 var ws = workbook.Worksheet("Noeuds");
-                int row = 2; // Supposons que la première ligne est l'en-tête
+                int row = 2; /// <summary> Supposons que la première ligne est l'en-tête</summary>
                 while (!ws.Row(row).IsEmpty())
                 {
-                    // La colonne 3 contient le nom de la station, la 4 la longitude et la 5 la latitude
+                    ///<summary> La colonne 3 contient le nom de la station, la 4 la longitude et la 5 la latitude</summary>
                     string stationName = ws.Cell(row, 3).Value.ToString().Trim();
                     
-                    // Utiliser .Value.ToString() au lieu de GetValue<string>()
+                    ///<summary> Utiliser .Value.ToString() au lieu de GetValue<string>()</summary>
                     string lonStr = ws.Cell(row, 4).Value.ToString().Trim();
                     string latStr = ws.Cell(row, 5).Value.ToString().Trim();
                     

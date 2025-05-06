@@ -28,28 +28,28 @@ namespace GraphProject
                 using (var workbook = new XLWorkbook(cheminExcel))
                 {
                     var ws = workbook.Worksheet("Arcs");
-                    int row = 2; // Supposons que la 1ère ligne est l'en-tête
+                    int row = 2; /// <summary> Supposons que la 1ère ligne est l'en-tête</summary>
                     var lignes = new List<ArcLine>();
                     var stationDict = new Dictionary<int, string>();
 
                     while (!ws.Row(row).IsEmpty())
                     {
-                        int stationId = ws.Cell(row, 1).GetValue<int>(); // colonne A
-                        string stationName = ws.Cell(row, 2).GetValue<string>(); // colonne B
-                        int precedent = ws.Cell(row, 3).GetValue<int>(); // colonne C
-                        int suivant = ws.Cell(row, 4).GetValue<int>();   // colonne D
-                        double tempsEntre = ws.Cell(row, 5).GetValue<double>(); // colonne E
-                        double tempsChangement = ws.Cell(row, 6).GetValue<double>(); // colonne F
+                        int stationId = ws.Cell(row, 1).GetValue<int>(); ///<summary> colonne A</summary>
+                        string stationName = ws.Cell(row, 2).GetValue<string>(); ///<summary> colonne B </summary>
+                        int precedent = ws.Cell(row, 3).GetValue<int>(); ///<summary> colonne C</summary>
+                        int suivant = ws.Cell(row, 4).GetValue<int>();   ///<summary> colonne D</summary>
+                        double tempsEntre = ws.Cell(row, 5).GetValue<double>(); ///<summary> colonne E</summary>
+                        double tempsChangement = ws.Cell(row, 6).GetValue<double>(); ///<summary> colonne F</summary>
 
-                        // Lecture de la colonne G pour la direction (optionnelle)
-                        string direction = "bi"; // valeur par défaut : bidirectionnel
+                        ///<summary> Lecture de la colonne G pour la direction (optionnelle)</summary>
+                        string direction = "bi"; /// <summary>valeur par défaut : bidirectionnel</summary>
                         var cellDirection = ws.Cell(row, 7);
                         if (!cellDirection.IsEmpty())
                         {
                             direction = cellDirection.GetValue<string>().Trim().ToLower();
                         }
 
-                        // Stocker la correspondance stationId -> stationName
+                        ///<summary> Stocker la correspondance stationId -> stationName</summary>
                         if (!stationDict.ContainsKey(stationId))
                             stationDict.Add(stationId, stationName);
 
@@ -67,25 +67,25 @@ namespace GraphProject
                         row++;
                     }
 
-                    // Construction des arcs en fonction des informations lues
+                    ///<summary> Construction des arcs en fonction des informations lues</summary>
                     foreach (var line in lignes)
                     {
                         double poids = line.TempsEntre + line.TempsChangement;
 
-                        // Arc depuis "Précédent" vers la station actuelle
+                        ///<summary> Arc depuis "Précédent" vers la station actuelle</summary>
                         if (line.Precedent != 0 && stationDict.ContainsKey(line.Precedent))
                         {
                             string source = stationDict[line.Precedent];
                             string cible = line.StationName;
                             graphe.AjouterArc(source, cible, poids);
-                            // Si bidirectionnel, ajouter aussi l'arc inverse
+                            ///<summary> Si bidirectionnel, ajouter aussi l'arc inverse</summary>
                             if (line.Direction == "bi")
                             {
                                 graphe.AjouterArc(cible, source, poids);
                             }
                         }
 
-                        // Arc depuis la station actuelle vers "Suivant"
+                        ///<summary> Arc depuis la station actuelle vers "Suivant"</summary>
                         if (line.Suivant != 0 && stationDict.ContainsKey(line.Suivant))
                         {
                             string source = line.StationName;
@@ -106,7 +106,9 @@ namespace GraphProject
             }
         }
 
-        // Classe interne pour stocker les informations d'une ligne de la feuille "Arcs"
+        /// <summary>
+        /// Classe interne pour stocker les informations d'une ligne de la feuille "Arcs"
+        /// </summary>
         public class ArcLine
         {
             public int StationId { get; set; }
